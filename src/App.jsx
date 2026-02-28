@@ -167,12 +167,12 @@ export default function App() {
         try {
             const exists = projects.find((x) => x.id === p.id);
             if (exists) {
-                const updated = await updateProject(p);
-                setProjects((prev) => prev.map((x) => (x.id === p.id ? updated : x)));
+                await updateProject(p);
             } else {
-                const created = await createProject(p);
-                setProjects((prev) => [...prev, created]);
+                await createProject(p);
             }
+            const fresh = await fetchProjects();
+            setProjects(fresh);
             setApiError("");
         } catch (err) {
             console.error("Failed to save project:", err);
@@ -180,7 +180,7 @@ export default function App() {
                 setIsAuthenticated(false);
                 setApiError("");
             } else {
-                setApiError("Could not save project. Please check your connection and try again.");
+                setApiError(`Could not save project: ${err?.message || "Please check your connection and try again."}`);
             }
         }
         setModal(null);
@@ -190,7 +190,8 @@ export default function App() {
         if (confirm("Destroy this project?")) {
             try {
                 await deleteProject(id);
-                setProjects((prev) => prev.filter((p) => p.id !== id));
+                const fresh = await fetchProjects();
+                setProjects(fresh);
                 setApiError("");
             } catch (err) {
                 console.error("Failed to delete project:", err);
@@ -198,7 +199,7 @@ export default function App() {
                     setIsAuthenticated(false);
                     setApiError("");
                 } else {
-                    setApiError("Could not delete project. Please try again.");
+                    setApiError(`Could not delete project: ${err?.message || "Please try again."}`);
                 }
             }
             setModal(null);
@@ -222,8 +223,9 @@ export default function App() {
         const log = [...(project.activityLog || []), { ts: new Date().toISOString(), action: `Status → ${status} (drag)` }];
         const updatedProject = { ...project, status, activityLog: log };
         try {
-            const saved = await updateProject(updatedProject);
-            setProjects((prev) => prev.map((p) => (p.id === dragId ? saved : p)));
+            await updateProject(updatedProject);
+            const fresh = await fetchProjects();
+            setProjects(fresh);
             setApiError("");
         } catch (err) {
             console.error("Failed to update project status:", err);
@@ -231,7 +233,7 @@ export default function App() {
                 setIsAuthenticated(false);
                 setApiError("");
             } else {
-                setApiError("Could not update project status. Please try again.");
+                setApiError(`Could not update project status: ${err?.message || "Please try again."}`);
             }
         }
         setDragId(null);
