@@ -7,6 +7,10 @@ import pg from "pg";
 const { Pool } = pg;
 
 const databaseUrl = process.env.DATABASE_URL;
+const shouldUseSsl =
+    process.env.POSTGRES_SSL === "true" ||
+    databaseUrl?.includes("neon.tech") ||
+    databaseUrl?.includes("neon.database");
 
 if (!databaseUrl) {
     console.error("❌ Missing DATABASE_URL environment variable.");
@@ -14,7 +18,10 @@ if (!databaseUrl) {
     process.exit(1);
 }
 
-const pool = new Pool({ connectionString: databaseUrl });
+const pool = new Pool({
+    connectionString: databaseUrl,
+    ssl: shouldUseSsl ? { rejectUnauthorized: false } : undefined,
+});
 
 const PROJECTS = [
     {

@@ -5,6 +5,7 @@ import "./App.css";
 import { STATUSES, PRIORITIES, APP_VERSION } from "./constants";
 import { calcProgress, daysLeft } from "./utils";
 import { fetchProjects, createProject, updateProject, deleteProject } from "./api/projects";
+import { login, getSession, logout } from "./api/auth";
 import { useTheme } from "./context/ThemeContext";
 import ProjectCard from "./components/ProjectCard";
 import KanbanBoard from "./components/KanbanBoard";
@@ -40,11 +41,40 @@ export default function App() {
     const [dragId, setDragId] = useState(null);
     const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 900);
     const [apiError, setApiError] = useState("");
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [authChecking, setAuthChecking] = useState(true);
+    const [userIdInput, setUserIdInput] = useState("");
+    const [passwordInput, setPasswordInput] = useState("");
+    const [authError, setAuthError] = useState("");
+    const [loginBooting, setLoginBooting] = useState(false);
 
     const isDark = theme === "dark";
 
-    // Load projects from database
+    // Check auth session on app start
     useEffect(() => {
+        (async () => {
+            try {
+                await getSession();
+                setIsAuthenticated(true);
+            } catch {
+                setIsAuthenticated(false);
+            } finally {
+                setAuthChecking(false);
+            }
+        })();
+    }, []);
+
+    // Load projects once authenticated
+    useEffect(() => {
+        if (authChecking) return;
+
+        if (!isAuthenticated) {
+            setLoading(false);
+            setProjects([]);
+            return;
+        }
+
+        setLoading(true);
         (async () => {
             try {
                 const data = await fetchProjects();
@@ -52,12 +82,18 @@ export default function App() {
                 setApiError("");
             } catch (err) {
                 console.error("Failed to load projects:", err);
-                setProjects([]);
-                setApiError("Unable to load projects right now. Please refresh or try again in a moment.");
+                if (err?.status === 401) {
+                    setIsAuthenticated(false);
+                    setApiError("");
+                } else {
+                    setProjects([]);
+                    setApiError("Unable to load projects right now. Please refresh or try again in a moment.");
+                }
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         })();
-    }, []);
+    }, [authChecking, isAuthenticated]);
 
     useEffect(() => {
         const timer = setTimeout(() => setMinSplashPassed(true), 900);
@@ -80,6 +116,47 @@ export default function App() {
         return () => window.removeEventListener("resize", onResize);
     }, []);
 
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        if (loginBooting) return;
+        setAuthError("");
+
+        if (!userIdInput.trim() || !passwordInput) {
+            setAuthError("Enter your ID and password.");
+            return;
+        }
+
+        try {
+            await login(userIdInput.trim(), passwordInput);
+            setLoginBooting(true);
+            setPasswordInput("");
+            setApiError("");
+            setTimeout(() => {
+                setIsAuthenticated(true);
+                setLoginBooting(false);
+            }, 1700);
+        } catch (err) {
+            console.error("Login failed:", err);
+            setAuthError(err?.status === 401 ? "Invalid ID or password." : "Login failed. Please try again.");
+            setLoginBooting(false);
+        }
+    };
+
+    const handleLogout = async () => {
+        try {
+            await logout();
+        } catch (err) {
+            console.error("Logout failed:", err);
+        } finally {
+            setIsAuthenticated(false);
+            setProjects([]);
+            setModal(null);
+            setApiError("");
+            setAuthError("");
+            setLoginBooting(false);
+        }
+    };
+
     // CRUD handlers
     const handleSave = async (p) => {
         try {
@@ -94,7 +171,12 @@ export default function App() {
             setApiError("");
         } catch (err) {
             console.error("Failed to save project:", err);
-            setApiError("Could not save project. Please check your connection and try again.");
+            if (err?.status === 401) {
+                setIsAuthenticated(false);
+                setApiError("");
+            } else {
+                setApiError("Could not save project. Please check your connection and try again.");
+            }
         }
         setModal(null);
     };
@@ -107,7 +189,12 @@ export default function App() {
                 setApiError("");
             } catch (err) {
                 console.error("Failed to delete project:", err);
-                setApiError("Could not delete project. Please try again.");
+                if (err?.status === 401) {
+                    setIsAuthenticated(false);
+                    setApiError("");
+                } else {
+                    setApiError("Could not delete project. Please try again.");
+                }
             }
             setModal(null);
         }
@@ -135,7 +222,12 @@ export default function App() {
             setApiError("");
         } catch (err) {
             console.error("Failed to update project status:", err);
-            setApiError("Could not update project status. Please try again.");
+            if (err?.status === 401) {
+                setIsAuthenticated(false);
+                setApiError("");
+            } else {
+                setApiError("Could not update project status. Please try again.");
+            }
         }
         setDragId(null);
     };
@@ -167,7 +259,7 @@ export default function App() {
     };
 
     // Loading screen
-    if (loading || !pageLoaded || !minSplashPassed) {
+    if (authChecking || loading || !pageLoaded || !minSplashPassed) {
         return (
             <div style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -177,6 +269,81 @@ export default function App() {
                 fontSize: 12, letterSpacing: 2,
             }}>
                 {isDark ? "Loading..." : "INITIALIZING STARK·WEBB SYSTEM..."}
+            </div>
+        );
+    }
+
+    if (!isAuthenticated) {
+        return (
+            <div className="nexus-login-screen" style={{
+                minHeight: "100vh",
+                background: "radial-gradient(circle at 20% 20%, #15203d 0%, #0B0D18 35%, #080A14 100%)",
+                color: theme === "dark" ? "#E8EAF2" : "#111827",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 16,
+                fontFamily: "'Inter',sans-serif",
+                position: "relative",
+                overflow: "hidden",
+            }}>
+                <div className="jarvis-grid" />
+                <form onSubmit={handleLogin} style={{
+                    width: "100%",
+                    maxWidth: 380,
+                    background: "linear-gradient(180deg, rgba(20,24,36,0.95), rgba(11,13,24,0.96))",
+                    border: "1px solid #243153",
+                    borderRadius: 14,
+                    padding: 22,
+                    boxShadow: "0 20px 50px rgba(0,0,0,0.55)",
+                    position: "relative",
+                    zIndex: 2,
+                }}>
+                    <div style={{ fontSize: 11, color: "#5B9EFF", letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>
+                        Stark Industries Access
+                    </div>
+                    <h1 style={{ margin: "0 0 4px", fontSize: 24, fontFamily: "'Space Grotesk',sans-serif", color: "#E8EAF2" }}>J.A.R.V.I.S. Login</h1>
+                    <div style={{ marginBottom: 16, fontSize: 12, color: "#8B91A8", letterSpacing: "0.04em" }}>Authenticate as Tony Stark</div>
+
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8B91A8" }}>ID</label>
+                    <input
+                        value={userIdInput}
+                        onChange={(e) => setUserIdInput(e.target.value)}
+                        autoComplete="username"
+                        placeholder="tony.stark"
+                        disabled={loginBooting}
+                        style={{ width: "100%", boxSizing: "border-box", marginBottom: 12, background: "#0B0D18", border: "1px solid #1E2740", borderRadius: 8, color: "#E8EAF2", padding: "10px 12px", fontSize: 13, outline: "none" }}
+                    />
+
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8B91A8" }}>Password</label>
+                    <input
+                        type="password"
+                        value={passwordInput}
+                        onChange={(e) => setPasswordInput(e.target.value)}
+                        autoComplete="current-password"
+                        placeholder="Enter password"
+                        disabled={loginBooting}
+                        style={{ width: "100%", boxSizing: "border-box", marginBottom: 14, background: "#0B0D18", border: "1px solid #1E2740", borderRadius: 8, color: "#E8EAF2", padding: "10px 12px", fontSize: 13, outline: "none" }}
+                    />
+
+                    {authError && (
+                        <div style={{ marginBottom: 12, fontSize: 12, color: "#FF7B7B" }}>{authError}</div>
+                    )}
+
+                    <button type="submit" disabled={loginBooting} style={{ width: "100%", background: loginBooting ? "#1E2740" : "#2979FF", color: "#fff", border: "none", borderRadius: 8, padding: "10px 12px", fontSize: 14, fontWeight: 600, cursor: loginBooting ? "not-allowed" : "pointer" }}>
+                        {loginBooting ? "Initializing J.A.R.V.I.S..." : "Login as Tony Stark"}
+                    </button>
+
+                    {loginBooting && (
+                        <div className="jarvis-boot-sequence">
+                            <div className="jarvis-ring jarvis-ring-outer" />
+                            <div className="jarvis-ring jarvis-ring-inner" />
+                            <div className="jarvis-pulse-core" />
+                            <div className="jarvis-scan-line" />
+                            <div className="jarvis-boot-text">J.A.R.V.I.S ONLINE · ACCESS GRANTED</div>
+                        </div>
+                    )}
+                </form>
             </div>
         );
     }
@@ -302,6 +469,15 @@ export default function App() {
                         onMouseLeave={e => e.currentTarget.style.filter = "brightness(1)"}
                     >
                         + New Mission
+                    </button>
+
+                    <button onClick={handleLogout} title="Logout" style={{
+                        background: "#141824", border: "1px solid #1E2740",
+                        borderRadius: 8, padding: "8px 12px", cursor: "pointer",
+                        color: "#FF7B7B", fontSize: 12, transition: "all 0.15s",
+                        fontFamily: "'Inter', sans-serif", fontWeight: 600,
+                    }}>
+                        Logout
                     </button>
 
                     {/* Theme toggle */}
@@ -495,6 +671,26 @@ export default function App() {
                             </button>
                         ))}
                     </div>
+
+                    <button
+                        onClick={handleLogout}
+                        title="Logout"
+                        style={{
+                            background: "#FEF2F2",
+                            border: "1px solid #FECACA",
+                            borderRadius: 8,
+                            padding: "8px 12px",
+                            cursor: "pointer",
+                            fontSize: 13,
+                            color: "#B91C1C",
+                            fontFamily: "'Inter',sans-serif",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                        }}
+                    >
+                        Logout
+                    </button>
 
                     <button
                         onClick={toggle}

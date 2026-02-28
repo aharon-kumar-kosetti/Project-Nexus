@@ -19,6 +19,7 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 .vscode/
+.vercel/
 
 # Runtime uploads (keep folder structure, ignore files)
 uploads/*

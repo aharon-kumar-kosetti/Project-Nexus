@@ -8,6 +8,10 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const databaseUrl = process.env.DATABASE_URL;
+const shouldUseSsl =
+    process.env.POSTGRES_SSL === "true" ||
+    databaseUrl?.includes("neon.tech") ||
+    databaseUrl?.includes("neon.database");
 
 if (!databaseUrl) {
     console.error("  ✗ Missing DATABASE_URL environment variable.");
@@ -17,6 +21,7 @@ if (!databaseUrl) {
 
 const pool = new pg.Pool({
     connectionString: databaseUrl,
+    ssl: shouldUseSsl ? { rejectUnauthorized: false } : undefined,
 });
 
 // Test connection on startup
