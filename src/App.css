@@ -1,0 +1,228 @@
+/* ═══════════════════════════════════════════════════
+   APP.CSS — Project Nexus Global Styles
+   Supports: [data-nexus-theme="dark"] and [data-nexus-theme="light"]
+═══════════════════════════════════════════════════ */
+
+/* ─── RESET ─── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ─── DARK THEME TOKENS (new clean design from image) ─── */
+[data-nexus-theme="dark"] {
+  --bg: #0B0D18;
+  --surface: #141824;
+  --surface-2: #1A2038;
+  --border: #1E2740;
+  --border-soft: #232e48;
+  --accent: #2979FF;
+  --accent-dim: rgba(41, 121, 255, 0.12);
+  --accent-glow: rgba(41, 121, 255, 0.25);
+  --live-color: #00C896;
+  --live-bg: rgba(0, 200, 150, 0.1);
+  --alert: #FF4B4B;
+  --alert-dim: rgba(255, 75, 75, 0.1);
+  --text-1: #E8EAF2;
+  --text-2: #8B91A8;
+  --text-3: #4A5170;
+  --tag-bg: #1E2740;
+  --progress-bg: #1E2740;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  --shadow-hover: 0 8px 32px rgba(0, 0, 0, 0.65);
+  --card-radius: 10px;
+  --font-head: 'Space Grotesk', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* ─── LIGHT THEME TOKENS (existing Iron Man HUD) ─── */
+[data-nexus-theme="light"] {
+  --bg: #070710;
+  --surface: #0c0c1e;
+  --surface-2: #0a0a1a;
+  --border: #FF003C20;
+  --border-soft: #ffffff10;
+  --accent: #FF003C;
+  --accent-dim: #FF003C20;
+  --accent-glow: #FF003C40;
+  --live-color: #00FF88;
+  --live-bg: #00FF8815;
+  --alert: #FF003C;
+  --alert-dim: #FF003C15;
+  --text-1: #f0eeff;
+  --text-2: #888;
+  --text-3: #444;
+  --tag-bg: #ffffff08;
+  --progress-bg: #1a1a2e;
+  --shadow: 0 4px 20px rgba(255, 0, 60, 0.08);
+  --shadow-hover: 0 8px 32px rgba(255, 0, 60, 0.15);
+  --card-radius: 12px;
+  --font-head: 'Orbitron', monospace;
+  --font-body: 'Rajdhani', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+}
+
+/* ─── SCROLLBAR ─── */
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-soft, #1E2740);
+  border-radius: 8px;
+}
+
+/* ─── SCAN LINE ANIMATION (light mode only) ─── */
+@keyframes scan {
+  0% {
+    top: 0;
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  90% {
+    opacity: 1;
+  }
+
+  100% {
+    top: 100vh;
+    opacity: 0;
+  }
+}
+
+/* ─── DARK MODE SPECIFIC ─── */
+[data-nexus-theme="dark"] .nx-scan-line {
+  display: none;
+}
+
+[data-nexus-theme="dark"] .nx-halftone {
+  display: none;
+}
+
+/* ─── KANBAN DROP ZONE (dark mode) ─── */
+.nx-drop-zone {
+  border: 1px dashed transparent;
+  border-radius: var(--card-radius);
+  padding: 24px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 12px;
+  font-family: var(--font-body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: all 0.15s ease;
+  margin-bottom: 8px;
+}
+
+[data-nexus-theme="dark"] .nx-drop-zone {
+  border-color: var(--border-soft);
+  color: var(--text-3);
+}
+
+[data-nexus-theme="dark"] .nx-drop-zone:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* ─── SMOOTH THEME TRANSITION ─── */
+[data-nexus-theme] * {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* ─── COMMON PROGRESS BAR ─── */
+.nx-progress-track {
+  flex: 1;
+  height: 4px;
+  background: var(--progress-bg);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.nx-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+/* ─── RESPONSIVE ─── */
+
+/* Tablets (≤ 900px): make kanban columns narrower */
+@media (max-width: 900px) {
+  [data-nexus-theme="dark"] header {
+    gap: 8px;
+    padding: 12px 16px !important;
+  }
+
+  [data-nexus-theme="dark"] header input {
+    width: 120px !important;
+  }
+}
+
+/* Mobile (≤ 640px) */
+@media (max-width: 640px) {
+
+  /* Header: search bar goes full width on new row */
+  [data-nexus-theme="dark"] header {
+    flex-wrap: wrap;
+    padding: 12px 14px !important;
+    gap: 8px;
+  }
+
+  [data-nexus-theme="dark"] header input {
+    width: 100% !important;
+    order: 10;
+    /* push to next row */
+  }
+
+  /* Stats row: wrap and tighten */
+  [data-nexus-theme="dark"] .nx-stats-row {
+    gap: 12px !important;
+    padding: 10px 14px !important;
+    font-size: 13px;
+  }
+
+  /* Kanban: stack columns vertically */
+  [data-nexus-theme="dark"] .nx-kanban-board {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+  }
+
+  [data-nexus-theme="dark"] .nx-kanban-board>div {
+    border-right: none !important;
+    border-bottom: 1px solid #1E2740;
+  }
+
+  /* Grid cards: single column */
+  [data-nexus-theme="dark"] .nx-grid {
+    grid-template-columns: 1fr !important;
+    padding: 14px !important;
+  }
+
+  /* Light mode tweaks */
+  [data-nexus-theme="light"] .nx-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  [data-nexus-theme="light"] .nx-filter-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
