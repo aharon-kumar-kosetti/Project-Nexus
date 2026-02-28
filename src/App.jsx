@@ -81,11 +81,11 @@ export default function App() {
                 setProjects(data);
                 setApiError("");
             } catch (err) {
-                console.error("Failed to load projects:", err);
                 if (err?.status === 401) {
                     setIsAuthenticated(false);
                     setApiError("");
                 } else {
+                    console.error("Failed to load projects:", err);
                     setProjects([]);
                     setApiError("Unable to load projects right now. Please refresh or try again in a moment.");
                 }
@@ -128,6 +128,7 @@ export default function App() {
 
         try {
             await login(userIdInput.trim(), passwordInput);
+            await getSession();
             setLoginBooting(true);
             setPasswordInput("");
             setApiError("");
@@ -137,7 +138,11 @@ export default function App() {
             }, 1700);
         } catch (err) {
             console.error("Login failed:", err);
-            setAuthError(err?.status === 401 ? "Invalid ID or password." : "Login failed. Please try again.");
+            if (err?.status === 401) {
+                setAuthError("Invalid ID or password.");
+            } else {
+                setAuthError("Login succeeded but session was not saved. Check server cookie settings.");
+            }
             setLoginBooting(false);
         }
     };
