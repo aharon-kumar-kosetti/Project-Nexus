@@ -45,18 +45,20 @@ router.get("/users", async (req, res) => {
         const { rows } = await pool.query(
             `SELECT
                 u.user_id,
+                u.display_name,
                 u.role,
                 u.created_at,
                 COUNT(p.id) AS project_count
              FROM users u
              LEFT JOIN projects p ON p.user_id = u.user_id
-             GROUP BY u.user_id, u.role, u.created_at
+             GROUP BY u.user_id, u.display_name, u.role, u.created_at
              ORDER BY u.created_at DESC`
         );
 
         return res.json(
             rows.map((row) => ({
                 userId: row.user_id,
+                displayName: row.display_name || row.user_id,
                 role: row.role,
                 createdAt: row.created_at,
                 projectCount: Number(row.project_count || 0),

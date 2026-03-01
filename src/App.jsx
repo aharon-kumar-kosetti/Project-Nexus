@@ -5,7 +5,7 @@ import "./App.css";
 import { STATUSES, PRIORITIES, APP_VERSION } from "./constants";
 import { calcProgress, daysLeft } from "./utils";
 import { fetchProjects, fetchUsers, createProject, updateProject, deleteProject } from "./api/projects";
-import { login, getSession, logout } from "./api/auth";
+import { login, getSession, logout, updatePassword, updateProfile, createUserAsAdmin } from "./api/auth";
 import { useTheme } from "./context/ThemeContext";
 import ProjectCard from "./components/ProjectCard";
 import KanbanBoard from "./components/KanbanBoard";
@@ -48,6 +48,7 @@ export default function App() {
     const [authError, setAuthError] = useState("");
     const [loginBooting, setLoginBooting] = useState(false);
     const [sessionUserId, setSessionUserId] = useState("");
+    const [sessionDisplayName, setSessionDisplayName] = useState("");
     const [sessionRole, setSessionRole] = useState("user");
     const [users, setUsers] = useState([]);
     const [ownerFilter, setOwnerFilter] = useState("all");
@@ -61,11 +62,13 @@ export default function App() {
             try {
                 const session = await getSession();
                 setSessionUserId(session?.userId || "");
+                setSessionDisplayName(session?.displayName || session?.userId || "");
                 setSessionRole(session?.role || "user");
                 setIsAuthenticated(true);
             } catch {
                 setIsAuthenticated(false);
                 setSessionUserId("");
+                setSessionDisplayName("");
                 setSessionRole("user");
             } finally {
                 setAuthChecking(false);
@@ -100,6 +103,7 @@ export default function App() {
                     setIsAuthenticated(false);
                     setApiError("");
                     setSessionUserId("");
+                    setSessionDisplayName("");
                     setSessionRole("user");
                 } else {
                     console.error("Failed to load projects:", err);
@@ -151,6 +155,7 @@ export default function App() {
             setApiError("");
             setTimeout(() => {
                 setSessionUserId(session?.userId || userIdInput.trim());
+                setSessionDisplayName(session?.displayName || session?.userId || userIdInput.trim());
                 setSessionRole(session?.role || "user");
                 setIsAuthenticated(true);
                 setLoginBooting(false);
@@ -179,9 +184,100 @@ export default function App() {
             setAuthError("");
             setLoginBooting(false);
             setSessionUserId("");
+            setSessionDisplayName("");
             setSessionRole("user");
             setUsers([]);
             setOwnerFilter("all");
+        }
+    };
+
+    const handleChangeName = async () => {
+        const nextDisplayName = prompt("Enter your new display name:", sessionDisplayName || sessionUserId);
+        if (nextDisplayName === null) return;
+
+        const value = String(nextDisplayName).trim();
+        if (!value) {
+            setApiError("Display name cannot be empty.");
+            return;
+        }
+
+        try {
+            const response = await updateProfile(value);
+            setSessionDisplayName(response?.displayName || value);
+            if (isAdmin) {
+                const usersData = await fetchUsers();
+                setUsers(usersData || []);
+            }
+            setApiError("");
+        } catch (err) {
+            console.error("Failed to update display name:", err);
+            setApiError(`Could not update display name: ${err?.message || "Please try again."}`);
+        }
+    };
+
+    const handleChangePassword = async () => {
+        const nextPassword = prompt("Enter your new password:");
+        if (nextPassword === null) return;
+
+        const value = String(nextPassword);
+        if (!value.trim()) {
+            setApiError("Password cannot be empty.");
+            return;
+        }
+
+        try {
+            await updatePassword(sessionUserId, value);
+            setApiError("");
+            alert("Password updated successfully.");
+        } catch (err) {
+            console.error("Failed to update password:", err);
+            setApiError(`Could not update password: ${err?.message || "Please try again."}`);
+        }
+    };
+
+    const handleAdminCreateUser = async () => {
+        if (!isAdmin) return;
+
+        const userId = prompt("New user's login ID (userId):");
+        if (userId === null) return;
+
+        const normalizedUserId = String(userId).trim();
+        if (!normalizedUserId) {
+            setApiError("User ID is required.");
+            return;
+        }
+
+        const password = prompt("Temporary password for this user:");
+        if (password === null) return;
+
+        const normalizedPassword = String(password);
+        if (!normalizedPassword.trim()) {
+            setApiError("Password is required.");
+            return;
+        }
+
+        const displayNameInput = prompt("Display name (optional):", normalizedUserId);
+        if (displayNameInput === null) return;
+
+        const roleInput = prompt("Role? Type admin or user", "user");
+        if (roleInput === null) return;
+        const role = String(roleInput).trim().toLowerCase() === "admin" ? "admin" : "user";
+
+        try {
+            await createUserAsAdmin({
+                userId: normalizedUserId,
+                password: normalizedPassword,
+                displayName: String(displayNameInput).trim() || normalizedUserId,
+                role,
+            });
+
+            const usersData = await fetchUsers();
+            setUsers(usersData || []);
+            setApiError("");
+            alert("User created successfully.");
+        } catch (err) {
+            console.error("Failed to create user:", err);
+            setApiError(`Could not create user: ${err?.message || "Please try again."}`);
         }
     };
 
@@ -502,6 +598,38 @@ export default function App() {
                         + New Mission
                     </button>
 
+                    {isAdmin && (
+                        <button
+                            onClick={handleAdminCreateUser}
+                            style={{
+                                background: "#141824", border: "1px solid #1E2740",
+                                borderRadius: 8, padding: "8px 12px", cursor: "pointer",
+                                color: "#6EE7B7", fontSize: 12, transition: "all 0.15s",
+                                fontFamily: "'Inter', sans-serif", fontWeight: 600,
+                            }}
+                        >
+                            + Create User
+                        </button>
+                    )}
+
+                    <button onClick={handleChangeName} title="Change Name" style={{
+                        background: "#141824", border: "1px solid #1E2740",
+                        borderRadius: 8, padding: "8px 12px", cursor: "pointer",
+                        color: "#8B91A8", fontSize: 12, transition: "all 0.15s",
+                        fontFamily: "'Inter', sans-serif", fontWeight: 600,
+                    }}>
+                        Name
+                    </button>
+
+                    <button onClick={handleChangePassword} title="Change Password" style={{
+                        background: "#141824", border: "1px solid #1E2740",
+                        borderRadius: 8, padding: "8px 12px", cursor: "pointer",
+                        color: "#8B91A8", fontSize: 12, transition: "all 0.15s",
+                        fontFamily: "'Inter', sans-serif", fontWeight: 600,
+                    }}>
+                        Password
+                    </button>
+
                     <button onClick={handleLogout} title="Logout" style={{
                         background: "#141824", border: "1px solid #1E2740",
                         borderRadius: 8, padding: "8px 12px", cursor: "pointer",
@@ -558,7 +686,7 @@ export default function App() {
                                 <option value="all">All users</option>
                                 {users.map((u) => (
                                     <option key={u.userId} value={u.userId}>
-                                        {u.userId} ({u.projectCount})
+                                        {u.displayName || u.userId} ({u.projectCount})
                                     </option>
                                 ))}
                             </select>
@@ -748,11 +876,62 @@ export default function App() {
                             <option value="all">All Users</option>
                             {users.map((u) => (
                                 <option key={u.userId} value={u.userId}>
-                                    {u.userId} ({u.projectCount})
+                                    {u.displayName || u.userId} ({u.projectCount})
                                 </option>
                             ))}
                         </select>
                     )}
+
+                    {isAdmin && (
+                        <button
+                            onClick={handleAdminCreateUser}
+                            style={{
+                                background: "#ECFDF5",
+                                border: "1px solid #A7F3D0",
+                                borderRadius: 8,
+                                padding: "8px 12px",
+                                cursor: "pointer",
+                                fontSize: 13,
+                                color: "#065F46",
+                                fontFamily: "'Inter',sans-serif",
+                                fontWeight: 600,
+                            }}
+                        >
+                            + Create User
+                        </button>
+                    )}
+
+                    <button
+                        onClick={handleChangeName}
+                        style={{
+                            background: "#F9FAFB",
+                            border: "1px solid #E5E7EB",
+                            borderRadius: 8,
+                            padding: "8px 12px",
+                            cursor: "pointer",
+                            fontSize: 13,
+                            color: "#374151",
+                            fontFamily: "'Inter',sans-serif",
+                        }}
+                    >
+                        Name
+                    </button>
+
+                    <button
+                        onClick={handleChangePassword}
+                        style={{
+                            background: "#F9FAFB",
+                            border: "1px solid #E5E7EB",
+                            borderRadius: 8,
+                            padding: "8px 12px",
+                            cursor: "pointer",
+                            fontSize: 13,
+                            color: "#374151",
+                            fontFamily: "'Inter',sans-serif",
+                        }}
+                    >
+                        Password
+                    </button>
 
                     <button
                         onClick={handleLogout}

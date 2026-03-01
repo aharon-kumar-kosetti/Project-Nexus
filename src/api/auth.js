@@ -55,3 +55,21 @@ export function updatePassword(targetUserId, newPassword) {
         body: JSON.stringify({ newPassword }),
     }).then((res) => handleAuthResponse(res, "Password update failed"));
 }
+
+export function updateProfile(displayName) {
+    return fetch(`${AUTH_BASE}/me/profile`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ displayName }),
+    }).then((res) => handleAuthResponse(res, "Profile update failed"));
+}
+
+export function createUserAsAdmin({ userId, password, displayName, role = "user" }) {
+    return fetch(`${AUTH_BASE}/admin/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ userId, password, displayName, role }),
+    }).then((res) => handleAuthResponse(res, "Create user failed"));
+}

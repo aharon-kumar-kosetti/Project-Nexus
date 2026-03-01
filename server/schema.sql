@@ -5,10 +5,21 @@
 CREATE TABLE IF NOT EXISTS users (
   user_id       VARCHAR(100) PRIMARY KEY,
   password_hash TEXT NOT NULL,
+  display_name  VARCHAR(150) NOT NULL DEFAULT '',
   role          VARCHAR(20) NOT NULL DEFAULT 'user',
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS display_name VARCHAR(150);
+
+UPDATE users
+SET display_name = COALESCE(NULLIF(display_name, ''), user_id)
+WHERE display_name IS NULL OR display_name = '';
+
+ALTER TABLE users
+ALTER COLUMN display_name SET NOT NULL;
 
 CREATE TABLE IF NOT EXISTS projects (
   id            VARCHAR(10) PRIMARY KEY,

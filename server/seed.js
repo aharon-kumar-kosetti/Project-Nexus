@@ -256,9 +256,9 @@ const PROJECTS = [
 ];
 
 const SEED_USERS = [
-    { userId: "admin", password: "admin123", role: "admin" },
-    { userId: "alex", password: "alex123", role: "user" },
-    { userId: "sara", password: "sara123", role: "user" },
+    { userId: "admin", displayName: "Admin", password: "admin123", role: "admin" },
+    { userId: "alex", displayName: "Alex", password: "alex123", role: "user" },
+    { userId: "sara", displayName: "Sara", password: "sara123", role: "user" },
 ];
 
 const PROJECT_OWNERS = ["admin", "alex", "sara"];
@@ -269,13 +269,14 @@ async function seed() {
     for (const user of SEED_USERS) {
         const passwordHash = await hashPassword(user.password);
         await pool.query(
-            `INSERT INTO users (user_id, password_hash, role)
-             VALUES ($1, $2, $3)
+            `INSERT INTO users (user_id, password_hash, role, display_name)
+             VALUES ($1, $2, $3, $4)
              ON CONFLICT (user_id) DO UPDATE SET
                 password_hash = EXCLUDED.password_hash,
                 role = EXCLUDED.role,
+                display_name = EXCLUDED.display_name,
                 updated_at = NOW()`,
-            [user.userId, passwordHash, user.role]
+            [user.userId, passwordHash, user.role, user.displayName || user.userId]
         );
         console.log(`  ✓ user ${user.userId} (${user.role})`);
     }
