@@ -45,6 +45,7 @@ export default function App() {
     const [authChecking, setAuthChecking] = useState(true);
     const [userIdInput, setUserIdInput] = useState("");
     const [passwordInput, setPasswordInput] = useState("");
+    const [loginMode, setLoginMode] = useState("admin");
     const [authError, setAuthError] = useState("");
     const [loginBooting, setLoginBooting] = useState(false);
     const [sessionUserId, setSessionUserId] = useState("");
@@ -401,6 +402,15 @@ export default function App() {
     }
 
     if (!isAuthenticated) {
+        const isAdminLoginMode = loginMode === "admin";
+        const accessLabel = isAdminLoginMode ? "Stark Industries Access" : "Avengers Initiative Access";
+        const loginTitle = isAdminLoginMode ? "J.A.R.V.I.S. Login" : "A.V.E.N.G.E.R. Login";
+        const loginSubtitle = isAdminLoginMode ? "Authenticate as Tony Stark" : "Authenticate as Avenger";
+        const idPlaceholder = isAdminLoginMode ? "tony.stark" : "avenger.id";
+        const submitLabel = isAdminLoginMode ? "Login as Tony Stark" : "Login as Avenger";
+        const bootingLabel = isAdminLoginMode ? "Initializing J.A.R.V.I.S..." : "Initializing Avenger Network...";
+        const bootStatus = isAdminLoginMode ? "J.A.R.V.I.S ONLINE · ACCESS GRANTED" : "A.V.E.N.G.E.R ONLINE · ACCESS GRANTED";
+
         return (
             <div className="nexus-login-screen" style={{
                 minHeight: "100vh",
@@ -427,17 +437,69 @@ export default function App() {
                     zIndex: 2,
                 }}>
                     <div style={{ fontSize: 11, color: "#5B9EFF", letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>
-                        Stark Industries Access
+                        {accessLabel}
                     </div>
-                    <h1 style={{ margin: "0 0 4px", fontSize: 24, fontFamily: "'Space Grotesk',sans-serif", color: "#E8EAF2" }}>J.A.R.V.I.S. Login</h1>
-                    <div style={{ marginBottom: 16, fontSize: 12, color: "#8B91A8", letterSpacing: "0.04em" }}>Authenticate as Tony Stark</div>
+                    <div style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 6,
+                        background: "#0B0D18",
+                        border: "1px solid #1E2740",
+                        borderRadius: 8,
+                        padding: 4,
+                        marginBottom: 12,
+                    }}>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setLoginMode("admin");
+                                setAuthError("");
+                            }}
+                            style={{
+                                background: isAdminLoginMode ? "#2979FF" : "transparent",
+                                border: "none",
+                                color: isAdminLoginMode ? "#fff" : "#8B91A8",
+                                borderRadius: 6,
+                                padding: "7px 8px",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                fontFamily: "'Inter',sans-serif",
+                            }}
+                        >
+                            Tony Stark (Admin)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setLoginMode("user");
+                                setAuthError("");
+                            }}
+                            style={{
+                                background: !isAdminLoginMode ? "#2979FF" : "transparent",
+                                border: "none",
+                                color: !isAdminLoginMode ? "#fff" : "#8B91A8",
+                                borderRadius: 6,
+                                padding: "7px 8px",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                fontFamily: "'Inter',sans-serif",
+                            }}
+                        >
+                            Avenger (User)
+                        </button>
+                    </div>
+
+                    <h1 style={{ margin: "0 0 4px", fontSize: 24, fontFamily: "'Space Grotesk',sans-serif", color: "#E8EAF2" }}>{loginTitle}</h1>
+                    <div style={{ marginBottom: 16, fontSize: 12, color: "#8B91A8", letterSpacing: "0.04em" }}>{loginSubtitle}</div>
 
                     <label style={{ display: "block", marginBottom: 6, fontSize: 12, color: "#8B91A8" }}>ID</label>
                     <input
                         value={userIdInput}
                         onChange={(e) => setUserIdInput(e.target.value)}
                         autoComplete="username"
-                        placeholder="tony.stark"
+                        placeholder={idPlaceholder}
                         disabled={loginBooting}
                         style={{ width: "100%", boxSizing: "border-box", marginBottom: 12, background: "#0B0D18", border: "1px solid #1E2740", borderRadius: 8, color: "#E8EAF2", padding: "10px 12px", fontSize: 13, outline: "none" }}
                     />
@@ -458,7 +520,7 @@ export default function App() {
                     )}
 
                     <button type="submit" disabled={loginBooting} style={{ width: "100%", background: loginBooting ? "#1E2740" : "#2979FF", color: "#fff", border: "none", borderRadius: 8, padding: "10px 12px", fontSize: 14, fontWeight: 600, cursor: loginBooting ? "not-allowed" : "pointer" }}>
-                        {loginBooting ? "Initializing J.A.R.V.I.S..." : "Login as Tony Stark"}
+                        {loginBooting ? bootingLabel : submitLabel}
                     </button>
 
                     {loginBooting && (
@@ -467,7 +529,7 @@ export default function App() {
                             <div className="jarvis-ring jarvis-ring-inner" />
                             <div className="jarvis-pulse-core" />
                             <div className="jarvis-scan-line" />
-                            <div className="jarvis-boot-text">J.A.R.V.I.S ONLINE · ACCESS GRANTED</div>
+                            <div className="jarvis-boot-text">{bootStatus}</div>
                         </div>
                     )}
                 </form>
