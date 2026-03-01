@@ -69,6 +69,7 @@ export default function App() {
 
     const isDark = theme === "dark";
     const isAdmin = sessionRole === "admin";
+    const dashboardUserName = sessionDisplayName || sessionUserId || "User";
     const unreadSupportCount = supportMessages.filter((message) => !message.isRead).length;
 
     // Check auth session on app start
@@ -963,7 +964,20 @@ export default function App() {
                     gap: 10,
                     flexWrap: "wrap",
                 }}>
-                    <NexusLogo />
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <img
+                            src="/web-image-nexus.png"
+                            alt="Project Nexus"
+                            style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: 8,
+                                objectFit: "cover",
+                                border: "1px solid #1E2740",
+                            }}
+                        />
+                        <NexusLogo />
+                    </div>
                     <div style={{ marginRight: isMobile ? 0 : "auto", marginLeft: 8, width: isMobile ? "calc(100% - 48px)" : "auto" }}>
                         <span style={{
                             fontFamily: "'Space Grotesk', sans-serif",
@@ -979,6 +993,15 @@ export default function App() {
                         <span style={{ fontSize: 10, color: "#4A5170", fontFamily: "'Inter', sans-serif", letterSpacing: "0.05em" }}>
                             v{APP_VERSION}
                         </span>
+                    </div>
+
+                    <div style={{
+                        fontSize: 12,
+                        color: "#8B91A8",
+                        fontFamily: "'Inter', sans-serif",
+                        letterSpacing: "0.03em",
+                    }}>
+                        Hello, <strong style={{ color: "#E8EAF2", fontWeight: 600 }}>{dashboardUserName}</strong>
                     </div>
 
                     {/* Search */}
@@ -1191,11 +1214,17 @@ export default function App() {
                 {/* Logo */}
                 <div style={{ padding: "22px 20px 16px", borderBottom: "1px solid #F3F4F6" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        {/* Triangle logo matching image */}
-                        <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
-                            <path d="M16 4L28 26H4L16 4Z" fill="none" stroke="#2563EB" strokeWidth="2.5" strokeLinejoin="round" />
-                            <circle cx="16" cy="16" r="4" fill="#2563EB" opacity="0.7" />
-                        </svg>
+                        <img
+                            src="/web-image-nexus.png"
+                            alt="Project Nexus"
+                            style={{
+                                width: 30,
+                                height: 30,
+                                borderRadius: 8,
+                                objectFit: "cover",
+                                border: "1px solid #E5E7EB",
+                            }}
+                        />
                         <div>
                             <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, fontWeight: 800, color: "#111827", letterSpacing: "0.02em" }}>PROJECT </span>
                             <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, fontWeight: 800, color: "#2563EB", letterSpacing: "0.02em" }}>NEXUS</span>
@@ -1296,11 +1325,21 @@ export default function App() {
                         </select>
                     )}
 
+                    <div style={{
+                        marginLeft: isMobile ? 0 : "auto",
+                        fontSize: 13,
+                        color: "#4B5563",
+                        fontFamily: "'Inter',sans-serif",
+                        fontWeight: 500,
+                    }}>
+                        Hello, <strong style={{ color: "#111827", fontWeight: 700 }}>{dashboardUserName}</strong>
+                    </div>
+
                     <button
                         onClick={openSettings}
                         title="Settings"
                         style={{
-                            marginLeft: isMobile ? 0 : "auto",
+                            marginLeft: 0,
                             background: "#111827",
                             border: "1px solid #374151",
                             borderRadius: 8,
