@@ -21,9 +21,20 @@ async function handleResponse(res, fallbackMessage) {
 }
 
 /** Fetch all projects from the database */
-export async function fetchProjects() {
-    const res = await fetch(BASE, { credentials: "include" });
+export async function fetchProjects(options = {}) {
+    const query = new URLSearchParams();
+    if (options.all === true) {
+        query.set("all", "true");
+    }
+
+    const url = query.toString() ? `${BASE}?${query.toString()}` : BASE;
+    const res = await fetch(url, { credentials: "include" });
     return handleResponse(res, "Failed to fetch projects");
+}
+
+export async function fetchUsers() {
+    const res = await fetch(`${BASE}/users`, { credentials: "include" });
+    return handleResponse(res, "Failed to fetch users");
 }
 
 /** Create a new project */

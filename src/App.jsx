@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import "./App.css";
 import { STATUSES, PRIORITIES, APP_VERSION } from "./constants";
 import { calcProgress, daysLeft } from "./utils";
-import { fetchProjects, createProject, updateProject, deleteProject } from "./api/projects";
+import { fetchProjects, fetchUsers, createProject, updateProject, deleteProject } from "./api/projects";
 import { login, getSession, logout } from "./api/auth";
 import { useTheme } from "./context/ThemeContext";
 import ProjectCard from "./components/ProjectCard";
@@ -47,17 +47,26 @@ export default function App() {
     const [passwordInput, setPasswordInput] = useState("");
     const [authError, setAuthError] = useState("");
     const [loginBooting, setLoginBooting] = useState(false);
+    const [sessionUserId, setSessionUserId] = useState("");
+    const [sessionRole, setSessionRole] = useState("user");
+    const [users, setUsers] = useState([]);
+    const [ownerFilter, setOwnerFilter] = useState("all");
 
     const isDark = theme === "dark";
+    const isAdmin = sessionRole === "admin";
 
     // Check auth session on app start
     useEffect(() => {
         (async () => {
             try {
-                await getSession();
+                const session = await getSession();
+                setSessionUserId(session?.userId || "");
+                setSessionRole(session?.role || "user");
                 setIsAuthenticated(true);
             } catch {
                 setIsAuthenticated(false);
+                setSessionUserId("");
+                setSessionRole("user");
             } finally {
                 setAuthChecking(false);
             }
@@ -77,13 +86,21 @@ export default function App() {
         setLoading(true);
         (async () => {
             try {
-                const data = await fetchProjects();
+                const data = await fetchProjects({ all: isAdmin });
                 setProjects(data);
+                if (isAdmin) {
+                    const usersData = await fetchUsers();
+                    setUsers(usersData || []);
+                } else {
+                    setUsers([]);
+                }
                 setApiError("");
             } catch (err) {
                 if (err?.status === 401) {
                     setIsAuthenticated(false);
                     setApiError("");
+                    setSessionUserId("");
+                    setSessionRole("user");
                 } else {
                     console.error("Failed to load projects:", err);
                     setProjects([]);
@@ -93,7 +110,7 @@ export default function App() {
                 setLoading(false);
             }
         })();
-    }, [authChecking, isAuthenticated]);
+    }, [authChecking, isAuthenticated, isAdmin]);
 
     useEffect(() => {
         const timer = setTimeout(() => setMinSplashPassed(true), 900);
@@ -128,11 +145,13 @@ export default function App() {
 
         try {
             await login(userIdInput.trim(), passwordInput);
-            await getSession();
+            const session = await getSession();
             setLoginBooting(true);
             setPasswordInput("");
             setApiError("");
             setTimeout(() => {
+                setSessionUserId(session?.userId || userIdInput.trim());
+                setSessionRole(session?.role || "user");
                 setIsAuthenticated(true);
                 setLoginBooting(false);
             }, 1700);
@@ -159,6 +178,10 @@ export default function App() {
             setApiError("");
             setAuthError("");
             setLoginBooting(false);
+            setSessionUserId("");
+            setSessionRole("user");
+            setUsers([]);
+            setOwnerFilter("all");
         }
     };
 
@@ -171,7 +194,7 @@ export default function App() {
             } else {
                 await createProject(p);
             }
-            const fresh = await fetchProjects();
+            const fresh = await fetchProjects({ all: isAdmin });
             setProjects(fresh);
             setApiError("");
         } catch (err) {
@@ -190,7 +213,7 @@ export default function App() {
         if (confirm("Destroy this project?")) {
             try {
                 await deleteProject(id);
-                const fresh = await fetchProjects();
+                const fresh = await fetchProjects({ all: isAdmin });
                 setProjects(fresh);
                 setApiError("");
             } catch (err) {
@@ -224,7 +247,7 @@ export default function App() {
         const updatedProject = { ...project, status, activityLog: log };
         try {
             await updateProject(updatedProject);
-            const fresh = await fetchProjects();
+            const fresh = await fetchProjects({ all: isAdmin });
             setProjects(fresh);
             setApiError("");
         } catch (err) {
@@ -241,6 +264,7 @@ export default function App() {
 
     // Filter + Sort
     const displayed = projects
+        .filter((p) => !isAdmin || ownerFilter === "all" || p.userId === ownerFilter)
         .filter((p) => filter === "All" || p.status === filter)
         .filter(
             (p) =>
@@ -516,6 +540,34 @@ export default function App() {
                         <span>Overdue: <strong style={{ color: "#FF4B4B", fontFamily: "'Space Grotesk', sans-serif", fontSize: 15 }}>{stats.overdue}</strong></span>
                     )}
 
+                    {isAdmin && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 12, color: "#8B91A8" }}>Admin Scope</span>
+                            <select
+                                value={ownerFilter}
+                                onChange={(e) => setOwnerFilter(e.target.value)}
+                                style={{
+                                    background: "#141824",
+                                    border: "1px solid #1E2740",
+                                    color: "#E8EAF2",
+                                    borderRadius: 6,
+                                    padding: "5px 8px",
+                                    fontSize: 12,
+                                }}
+                            >
+                                <option value="all">All users</option>
+                                {users.map((u) => (
+                                    <option key={u.userId} value={u.userId}>
+                                        {u.userId} ({u.projectCount})
+                                    </option>
+                                ))}
+                            </select>
+                            <span style={{ fontSize: 12, color: "#4A5170" }}>
+                                Users: <strong style={{ color: "#E8EAF2" }}>{users.length}</strong>
+                            </span>
+                        </div>
+                    )}
+
                     {/* Filter pills */}
                     <div style={{ marginLeft: isMobile ? 0 : "auto", display: "flex", gap: 4, flexWrap: "wrap" }}>
                         {["All", ...STATUSES].map((s) => (
@@ -678,6 +730,29 @@ export default function App() {
                             </button>
                         ))}
                     </div>
+
+                    {isAdmin && (
+                        <select
+                            value={ownerFilter}
+                            onChange={(e) => setOwnerFilter(e.target.value)}
+                            style={{
+                                background: "#F9FAFB",
+                                border: "1px solid #E5E7EB",
+                                borderRadius: 8,
+                                color: "#111827",
+                                padding: "8px 10px",
+                                fontSize: 12,
+                                fontFamily: "'Inter',sans-serif",
+                            }}
+                        >
+                            <option value="all">All Users</option>
+                            {users.map((u) => (
+                                <option key={u.userId} value={u.userId}>
+                                    {u.userId} ({u.projectCount})
+                                </option>
+                            ))}
+                        </select>
+                    )}
 
                     <button
                         onClick={handleLogout}

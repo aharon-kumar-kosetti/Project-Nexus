@@ -4,6 +4,7 @@
 
 import "dotenv/config";
 import pg from "pg";
+import { hashPassword } from "./utils/password.js";
 const { Pool } = pg;
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -254,16 +255,41 @@ const PROJECTS = [
     },
 ];
 
+const SEED_USERS = [
+    { userId: "admin", password: "admin123", role: "admin" },
+    { userId: "alex", password: "alex123", role: "user" },
+    { userId: "sara", password: "sara123", role: "user" },
+];
+
+const PROJECT_OWNERS = ["admin", "alex", "sara"];
+
 async function seed() {
     console.log("🌱 Seeding database with sample projects...");
+
+    for (const user of SEED_USERS) {
+        const passwordHash = await hashPassword(user.password);
+        await pool.query(
+            `INSERT INTO users (user_id, password_hash, role)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (user_id) DO UPDATE SET
+                password_hash = EXCLUDED.password_hash,
+                role = EXCLUDED.role,
+                updated_at = NOW()`,
+            [user.userId, passwordHash, user.role]
+        );
+        console.log(`  ✓ user ${user.userId} (${user.role})`);
+    }
+
     for (const p of PROJECTS) {
+        const ownerUserId = PROJECT_OWNERS[Math.floor(Math.random() * PROJECT_OWNERS.length)];
         await pool.query(
             `INSERT INTO projects (
-                id, title, description, status, priority, progress,
+                id, user_id, title, description, status, priority, progress,
                 tags, tech_stack, repo_link, deploy_link, deploy_status, deploy_label,
                 docs, deadline, created_at, tasks, notes, activity_log
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
             ON CONFLICT (id) DO UPDATE SET
+                user_id=EXCLUDED.user_id,
                 title=EXCLUDED.title, description=EXCLUDED.description,
                 status=EXCLUDED.status, priority=EXCLUDED.priority, progress=EXCLUDED.progress,
                 tags=EXCLUDED.tags, tech_stack=EXCLUDED.tech_stack, repo_link=EXCLUDED.repo_link,
@@ -272,14 +298,14 @@ async function seed() {
                 deadline=EXCLUDED.deadline, tasks=EXCLUDED.tasks,
                 notes=EXCLUDED.notes, activity_log=EXCLUDED.activity_log`,
             [
-                p.id, p.title, p.description, p.status, p.priority, p.progress,
+                p.id, ownerUserId, p.title, p.description, p.status, p.priority, p.progress,
                 JSON.stringify(p.tags), JSON.stringify(p.techStack),
                 p.repoLink, p.deployLink, p.deployStatus, p.deployLabel,
                 JSON.stringify(p.docs), p.deadline || null, p.createdAt,
                 JSON.stringify(p.tasks), p.notes, JSON.stringify(p.activityLog),
             ]
         );
-        console.log(`  ✓ ${p.title}`);
+        console.log(`  ✓ ${p.title} (${ownerUserId})`);
     }
     console.log("✅ Seeding complete!");
     await pool.end();

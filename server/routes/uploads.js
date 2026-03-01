@@ -42,14 +42,25 @@ const upload = multer({
 
 const router = Router();
 
+function isAdmin(req) {
+    return req.session?.role === "admin";
+}
+
 // ── POST /api/projects/:id/docs — Upload file(s) ──
 router.post("/:id/docs", upload.array("files", 5), async (req, res) => {
     try {
+        const projectQuery = isAdmin(req)
+            ? {
+                text: "SELECT docs FROM projects WHERE id = $1",
+                values: [req.params.id],
+            }
+            : {
+                text: "SELECT docs FROM projects WHERE id = $1 AND user_id = $2",
+                values: [req.params.id, req.session.userId],
+            };
+
         // Get current project docs
-        const { rows } = await pool.query(
-            "SELECT docs FROM projects WHERE id = $1",
-            [req.params.id]
-        );
+        const { rows } = await pool.query(projectQuery.text, projectQuery.values);
         if (rows.length === 0) return res.status(404).json({ error: "Project not found" });
 
         const existingDocs = rows[0].docs || [];
@@ -64,10 +75,17 @@ router.post("/:id/docs", upload.array("files", 5), async (req, res) => {
 
         const allDocs = [...existingDocs, ...newDocs];
 
-        await pool.query(
-            "UPDATE projects SET docs = $1, updated_at = NOW() WHERE id = $2",
-            [JSON.stringify(allDocs), req.params.id]
-        );
+        if (isAdmin(req)) {
+            await pool.query(
+                "UPDATE projects SET docs = $1, updated_at = NOW() WHERE id = $2",
+                [JSON.stringify(allDocs), req.params.id]
+            );
+        } else {
+            await pool.query(
+                "UPDATE projects SET docs = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3",
+                [JSON.stringify(allDocs), req.params.id, req.session.userId]
+            );
+        }
 
         res.status(201).json(newDocs);
     } catch (err) {
@@ -79,10 +97,17 @@ router.post("/:id/docs", upload.array("files", 5), async (req, res) => {
 // ── DELETE /api/projects/:id/docs/:docId — Remove a doc ──
 router.delete("/:id/docs/:docId", async (req, res) => {
     try {
-        const { rows } = await pool.query(
-            "SELECT docs FROM projects WHERE id = $1",
-            [req.params.id]
-        );
+        const projectQuery = isAdmin(req)
+            ? {
+                text: "SELECT docs FROM projects WHERE id = $1",
+                values: [req.params.id],
+            }
+            : {
+                text: "SELECT docs FROM projects WHERE id = $1 AND user_id = $2",
+                values: [req.params.id, req.session.userId],
+            };
+
+        const { rows } = await pool.query(projectQuery.text, projectQuery.values);
         if (rows.length === 0) return res.status(404).json({ error: "Project not found" });
 
         const docs = rows[0].docs || [];
@@ -95,10 +120,17 @@ router.delete("/:id/docs/:docId", async (req, res) => {
         }
 
         const updatedDocs = docs.filter((d) => d.id !== req.params.docId);
-        await pool.query(
-            "UPDATE projects SET docs = $1, updated_at = NOW() WHERE id = $2",
-            [JSON.stringify(updatedDocs), req.params.id]
-        );
+        if (isAdmin(req)) {
+            await pool.query(
+                "UPDATE projects SET docs = $1, updated_at = NOW() WHERE id = $2",
+                [JSON.stringify(updatedDocs), req.params.id]
+            );
+        } else {
+            await pool.query(
+                "UPDATE projects SET docs = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3",
+                [JSON.stringify(updatedDocs), req.params.id, req.session.userId]
+            );
+        }
 
         res.json({ success: true });
     } catch (err) {

@@ -25,6 +25,15 @@ export function login(userId, password) {
     }).then((res) => handleAuthResponse(res, "Login failed"));
 }
 
+export function register(userId, password) {
+    return fetch(`${AUTH_BASE}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ userId, password }),
+    }).then((res) => handleAuthResponse(res, "Registration failed"));
+}
+
 export function getSession() {
     return fetch(`${AUTH_BASE}/me`, {
         credentials: "include",
@@ -36,4 +45,13 @@ export function logout() {
         method: "POST",
         credentials: "include",
     }).then((res) => handleAuthResponse(res, "Logout failed"));
+}
+
+export function updatePassword(targetUserId, newPassword) {
+    return fetch(`${AUTH_BASE}/users/${encodeURIComponent(targetUserId)}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ newPassword }),
+    }).then((res) => handleAuthResponse(res, "Password update failed"));
 }
