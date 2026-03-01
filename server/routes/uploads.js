@@ -49,19 +49,13 @@ function isAdmin(req) {
 // ── POST /api/projects/:id/docs — Upload file(s) ──
 router.post("/:id/docs", upload.array("files", 5), async (req, res) => {
     try {
-        const projectQuery = isAdmin(req)
-            ? {
-                text: "SELECT docs FROM projects WHERE id = $1",
-                values: [req.params.id],
-            }
-            : {
-                text: "SELECT docs FROM projects WHERE id = $1 AND user_id = $2",
-                values: [req.params.id, req.session.userId],
-            };
-
-        // Get current project docs
-        const { rows } = await pool.query(projectQuery.text, projectQuery.values);
+        const { rows } = await pool.query("SELECT user_id, docs FROM projects WHERE id = $1", [req.params.id]);
         if (rows.length === 0) return res.status(404).json({ error: "Project not found" });
+
+        const ownerUserId = rows[0].user_id;
+        if (!isAdmin(req) && ownerUserId !== req.session.userId) {
+            return res.status(403).json({ error: "Read-only access: uploads are disabled for this project" });
+        }
 
         const existingDocs = rows[0].docs || [];
         const newDocs = req.files.map((file) => ({
@@ -97,18 +91,13 @@ router.post("/:id/docs", upload.array("files", 5), async (req, res) => {
 // ── DELETE /api/projects/:id/docs/:docId — Remove a doc ──
 router.delete("/:id/docs/:docId", async (req, res) => {
     try {
-        const projectQuery = isAdmin(req)
-            ? {
-                text: "SELECT docs FROM projects WHERE id = $1",
-                values: [req.params.id],
-            }
-            : {
-                text: "SELECT docs FROM projects WHERE id = $1 AND user_id = $2",
-                values: [req.params.id, req.session.userId],
-            };
-
-        const { rows } = await pool.query(projectQuery.text, projectQuery.values);
+        const { rows } = await pool.query("SELECT user_id, docs FROM projects WHERE id = $1", [req.params.id]);
         if (rows.length === 0) return res.status(404).json({ error: "Project not found" });
+
+        const ownerUserId = rows[0].user_id;
+        if (!isAdmin(req) && ownerUserId !== req.session.userId) {
+            return res.status(403).json({ error: "Read-only access: uploads are disabled for this project" });
+        }
 
         const docs = rows[0].docs || [];
         const doc = docs.find((d) => d.id === req.params.docId);

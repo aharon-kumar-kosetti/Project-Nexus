@@ -56,6 +56,21 @@ FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE;
 
 CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
 
+CREATE TABLE IF NOT EXISTS project_access (
+  id                  BIGSERIAL PRIMARY KEY,
+  project_id          VARCHAR(10) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id             VARCHAR(100) NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  access_level        VARCHAR(20) NOT NULL DEFAULT 'read',
+  granted_by_user_id  VARCHAR(100) NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT project_access_level_check CHECK (access_level IN ('read')),
+  CONSTRAINT project_access_unique_project_user UNIQUE (project_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_access_user_id ON project_access(user_id);
+CREATE INDEX IF NOT EXISTS idx_project_access_project_id ON project_access(project_id);
+
 CREATE TABLE IF NOT EXISTS support_messages (
   id             BIGSERIAL PRIMARY KEY,
   sender_user_id VARCHAR(100) NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,

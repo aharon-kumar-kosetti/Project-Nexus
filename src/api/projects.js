@@ -37,6 +37,40 @@ export async function fetchUsers() {
     return handleResponse(res, "Failed to fetch users");
 }
 
+export async function fetchSharedProjects() {
+    const res = await fetch(`${BASE}/shared`, { credentials: "include" });
+    return handleResponse(res, "Failed to fetch shared projects");
+}
+
+export async function searchProjectUsers(projectId, userId) {
+    const query = new URLSearchParams({ projectId, userId });
+    const res = await fetch(`${BASE}/users/search?${query.toString()}`, { credentials: "include" });
+    return handleResponse(res, "Failed to search users");
+}
+
+export async function fetchProjectAccess(projectId) {
+    const res = await fetch(`${BASE}/${encodeURIComponent(projectId)}/access`, { credentials: "include" });
+    return handleResponse(res, "Failed to fetch project access");
+}
+
+export async function grantProjectReadAccess(projectId, userId) {
+    const res = await fetch(`${BASE}/${encodeURIComponent(projectId)}/access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ userId }),
+    });
+    return handleResponse(res, "Failed to grant project access");
+}
+
+export async function revokeProjectReadAccess(projectId, userId) {
+    const res = await fetch(`${BASE}/${encodeURIComponent(projectId)}/access/${encodeURIComponent(userId)}`, {
+        method: "DELETE",
+        credentials: "include",
+    });
+    return handleResponse(res, "Failed to revoke project access");
+}
+
 /** Create a new project */
 export async function createProject(project) {
     const res = await fetch(BASE, {

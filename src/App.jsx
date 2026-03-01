@@ -4,7 +4,14 @@ import { useState, useEffect } from "react";
 import "./App.css";
 import { STATUSES, PRIORITIES, APP_VERSION } from "./constants";
 import { calcProgress, daysLeft } from "./utils";
-import { fetchProjects, fetchUsers, createProject, updateProject, deleteProject } from "./api/projects";
+import {
+    fetchProjects,
+    fetchUsers,
+    createProject,
+    updateProject,
+    deleteProject,
+    fetchSharedProjects,
+} from "./api/projects";
 import { login, getSession, logout, updatePassword, updateProfile, createUserAsAdmin } from "./api/auth";
 import { fetchSupportMessages, sendSupportMessage, markSupportMessageRead } from "./api/support";
 import { useTheme } from "./context/ThemeContext";
@@ -31,11 +38,13 @@ function NexusLogo() {
 export default function App() {
     const { theme, toggle } = useTheme();
     const [projects, setProjects] = useState([]);
+    const [sharedProjects, setSharedProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [pageLoaded, setPageLoaded] = useState(typeof document !== "undefined" ? document.readyState === "complete" : false);
     const [minSplashPassed, setMinSplashPassed] = useState(false);
     const [modal, setModal] = useState(null);
     const [view, setView] = useState("kanban");
+    const [projectScope, setProjectScope] = useState("owned");
     const [filter, setFilter] = useState("All");
     const sort = "deadline";
     const [search, setSearch] = useState("");
@@ -99,6 +108,7 @@ export default function App() {
         if (!isAuthenticated) {
             setLoading(false);
             setProjects([]);
+            setSharedProjects([]);
             return;
         }
 
@@ -106,7 +116,9 @@ export default function App() {
         (async () => {
             try {
                 const data = await fetchProjects({ all: isAdmin });
-                setProjects(data);
+                const shared = await fetchSharedProjects();
+                setProjects(data || []);
+                setSharedProjects(shared || []);
                 if (isAdmin) {
                     const usersData = await fetchUsers();
                     setUsers(usersData || []);
@@ -121,9 +133,11 @@ export default function App() {
                     setSessionUserId("");
                     setSessionDisplayName("");
                     setSessionRole("user");
+                    setSharedProjects([]);
                 } else {
                     console.error("Failed to load projects:", err);
                     setProjects([]);
+                    setSharedProjects([]);
                     setApiError("Unable to load projects right now. Please refresh or try again in a moment.");
                 }
             } finally {
@@ -227,6 +241,7 @@ export default function App() {
         } finally {
             setIsAuthenticated(false);
             setProjects([]);
+            setSharedProjects([]);
             setModal(null);
             setApiError("");
             setAuthError("");
@@ -245,7 +260,17 @@ export default function App() {
             setNewUserDisplayName("");
             setNewUserPassword("");
             setNewUserRole("user");
+            setProjectScope("owned");
         }
+    };
+
+    const refreshProjectLists = async () => {
+        const [owned, shared] = await Promise.all([
+            fetchProjects({ all: isAdmin }),
+            fetchSharedProjects(),
+        ]);
+        setProjects(owned || []);
+        setSharedProjects(shared || []);
     };
 
     const openSettings = () => {
@@ -405,6 +430,12 @@ export default function App() {
 
     // CRUD handlers
     const handleSave = async (p) => {
+        const existing = projects.find((x) => x.id === p.id) || sharedProjects.find((x) => x.id === p.id);
+        if (existing?.readOnly) {
+            setApiError("This project is shared with you in read-only mode.");
+            return;
+        }
+
         try {
             const exists = projects.find((x) => x.id === p.id);
             if (exists) {
@@ -412,8 +443,7 @@ export default function App() {
             } else {
                 await createProject(p);
             }
-            const fresh = await fetchProjects({ all: isAdmin });
-            setProjects(fresh);
+            await refreshProjectLists();
             setApiError("");
         } catch (err) {
             console.error("Failed to save project:", err);
@@ -428,11 +458,16 @@ export default function App() {
     };
 
     const handleDelete = async (id) => {
+        const existing = projects.find((x) => x.id === id) || sharedProjects.find((x) => x.id === id);
+        if (existing?.readOnly) {
+            setApiError("This project is shared with you in read-only mode.");
+            return;
+        }
+
         if (confirm("Destroy this project?")) {
             try {
                 await deleteProject(id);
-                const fresh = await fetchProjects({ all: isAdmin });
-                setProjects(fresh);
+                await refreshProjectLists();
                 setApiError("");
             } catch (err) {
                 console.error("Failed to delete project:", err);
@@ -449,6 +484,8 @@ export default function App() {
 
     // Drag and drop (Kanban)
     const onDragStart = (e, id) => {
+        const project = projects.find((p) => p.id === id) || sharedProjects.find((p) => p.id === id);
+        if (project?.readOnly) return;
         setDragId(id);
         e.dataTransfer.effectAllowed = "move";
     };
@@ -461,12 +498,16 @@ export default function App() {
         if (!dragId) return;
         const project = projects.find((p) => p.id === dragId);
         if (!project) return;
+        if (project.readOnly) {
+            setApiError("This project is shared with you in read-only mode.");
+            setDragId(null);
+            return;
+        }
         const log = [...(project.activityLog || []), { ts: new Date().toISOString(), action: `Status → ${status} (drag)` }];
         const updatedProject = { ...project, status, activityLog: log };
         try {
             await updateProject(updatedProject);
-            const fresh = await fetchProjects({ all: isAdmin });
-            setProjects(fresh);
+            await refreshProjectLists();
             setApiError("");
         } catch (err) {
             console.error("Failed to update project status:", err);
@@ -480,9 +521,13 @@ export default function App() {
         setDragId(null);
     };
 
+    const activeProjects = projectScope === "shared" ? sharedProjects : projects;
+    const scopeLabel = projectScope === "shared" ? "Shared with me" : "My projects";
+    const isReadOnlyScope = projectScope === "shared";
+
     // Filter + Sort
-    const displayed = projects
-        .filter((p) => !isAdmin || ownerFilter === "all" || p.userId === ownerFilter)
+    const displayed = activeProjects
+        .filter((p) => projectScope !== "owned" || !isAdmin || ownerFilter === "all" || p.userId === ownerFilter)
         .filter((p) => filter === "All" || p.status === filter)
         .filter(
             (p) =>
@@ -500,11 +545,11 @@ export default function App() {
 
     // Stats
     const stats = {
-        total: projects.length,
-        ongoing: projects.filter((p) => p.status === "Ongoing").length,
-        upcoming: projects.filter((p) => p.status === "Upcoming").length,
-        completed: projects.filter((p) => p.status === "Completed").length,
-        overdue: projects.filter((p) => p.deadline && daysLeft(p.deadline) < 0 && p.status !== "Completed").length,
+        total: activeProjects.length,
+        ongoing: activeProjects.filter((p) => p.status === "Ongoing").length,
+        upcoming: activeProjects.filter((p) => p.status === "Upcoming").length,
+        completed: activeProjects.filter((p) => p.status === "Completed").length,
+        overdue: activeProjects.filter((p) => p.deadline && daysLeft(p.deadline) < 0 && p.status !== "Completed").length,
     };
 
     // Loading screen
@@ -1041,18 +1086,38 @@ export default function App() {
                         ))}
                     </div>
 
+                    <div style={{ display: "flex", gap: 2, background: "#141824", border: "1px solid #1E2740", borderRadius: 8, padding: 3 }}>
+                        {[["owned", "My Projects"], ["shared", "Shared With Me"]].map(([scope, label]) => (
+                            <button key={scope} onClick={() => setProjectScope(scope)} style={{
+                                background: projectScope === scope ? "#2979FF" : "none",
+                                border: "none",
+                                color: projectScope === scope ? "#fff" : "#4A5170",
+                                borderRadius: 6,
+                                padding: "6px 12px",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                fontFamily: "'Inter', sans-serif",
+                                fontWeight: projectScope === scope ? 600 : 400,
+                            }}>
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+
                     {/* New Mission */}
-                    <button onClick={() => setModal("new")} style={{
-                        background: "#2979FF", border: "none", color: "#fff",
-                        borderRadius: 8, padding: "9px 18px", cursor: "pointer",
-                        fontSize: 13, fontFamily: "'Inter', sans-serif", fontWeight: 600,
-                        transition: "all 0.15s",
-                    }}
-                        onMouseEnter={e => e.currentTarget.style.filter = "brightness(1.12)"}
-                        onMouseLeave={e => e.currentTarget.style.filter = "brightness(1)"}
-                    >
-                        + New Mission
-                    </button>
+                    {!isReadOnlyScope && (
+                        <button onClick={() => setModal("new")} style={{
+                            background: "#2979FF", border: "none", color: "#fff",
+                            borderRadius: 8, padding: "9px 18px", cursor: "pointer",
+                            fontSize: 13, fontFamily: "'Inter', sans-serif", fontWeight: 600,
+                            transition: "all 0.15s",
+                        }}
+                            onMouseEnter={e => e.currentTarget.style.filter = "brightness(1.12)"}
+                            onMouseLeave={e => e.currentTarget.style.filter = "brightness(1)"}
+                        >
+                            + New Mission
+                        </button>
+                    )}
 
                     <button onClick={openSettings} title="Settings" style={{
                         background: "#141824", border: "1px solid #1E2740",
@@ -1103,7 +1168,11 @@ export default function App() {
                         <span>Overdue: <strong style={{ color: "#FF4B4B", fontFamily: "'Space Grotesk', sans-serif", fontSize: 15 }}>{stats.overdue}</strong></span>
                     )}
 
-                    {isAdmin && (
+                    <span style={{ fontSize: 12, color: "#4A5170" }}>
+                        Scope: <strong style={{ color: "#E8EAF2" }}>{scopeLabel}</strong>
+                    </span>
+
+                    {isAdmin && projectScope === "owned" && (
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             <span style={{ fontSize: 12, color: "#8B91A8" }}>Admin Scope</span>
                             <select
@@ -1168,7 +1237,7 @@ export default function App() {
                             <div style={{ textAlign: "center", padding: isMobile ? "56px 16px" : "80px 32px", color: "#4A5170", fontFamily: "'Inter',sans-serif" }}>
                                 <div style={{ fontSize: 32, marginBottom: 12 }}>{"\u25CB"}</div>
                                 <div style={{ fontSize: 15, fontWeight: 600, fontFamily: "'Space Grotesk',sans-serif", color: "#8B91A8", marginBottom: 4 }}>No missions found</div>
-                                <div style={{ fontSize: 13 }}>Click + New Mission to get started</div>
+                                <div style={{ fontSize: 13 }}>{isReadOnlyScope ? "No shared projects yet" : "Click + New Mission to get started"}</div>
                             </div>
                         ) : (
                             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(300px,1fr))", gap: 14, padding: isMobile ? "14px" : "24px 32px" }}>
@@ -1187,6 +1256,9 @@ export default function App() {
                         onClose={() => setModal(null)}
                         onSave={handleSave}
                         onDelete={handleDelete}
+                        readOnly={Boolean(modal !== "new" && modal?.readOnly)}
+                        canManageAccess={Boolean(modal !== "new" && (isAdmin || modal?.userId === sessionUserId))}
+                        onAccessChanged={refreshProjectLists}
                         theme={theme}
                     />
                 )}
@@ -1202,7 +1274,7 @@ export default function App() {
         { label: "Upcoming", key: "Upcoming", icon: "\u23F0", count: stats.upcoming },
         { label: "Ongoing", key: "Ongoing", icon: "\u26A1", count: stats.ongoing },
         { label: "Done", key: "Completed", icon: "\u2713", count: stats.completed },
-        { label: "Paused", key: "Paused", icon: "\u23F8", count: projects.filter(p => p.status === "Paused").length },
+        { label: "Paused", key: "Paused", icon: "\u23F8", count: activeProjects.filter(p => p.status === "Paused").length },
     ];
 
     return (
@@ -1233,16 +1305,18 @@ export default function App() {
                 </div>
 
                 {/* + New Mission button */}
-                <div style={{ padding: "14px 16px 10px" }}>
-                    <button
-                        onClick={() => setModal("new")}
-                        style={{ width: "100%", background: "#2563EB", border: "none", color: "#fff", borderRadius: 10, padding: "11px 0", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: "'Inter',sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, transition: "background 0.15s", boxShadow: "0 4px 12px rgba(37,99,235,0.3)" }}
-                        onMouseEnter={e => e.currentTarget.style.background = "#1D4ED8"}
-                        onMouseLeave={e => e.currentTarget.style.background = "#2563EB"}
-                    >
-                        + New Mission
-                    </button>
-                </div>
+                {!isReadOnlyScope && (
+                    <div style={{ padding: "14px 16px 10px" }}>
+                        <button
+                            onClick={() => setModal("new")}
+                            style={{ width: "100%", background: "#2563EB", border: "none", color: "#fff", borderRadius: 10, padding: "11px 0", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: "'Inter',sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, transition: "background 0.15s", boxShadow: "0 4px 12px rgba(37,99,235,0.3)" }}
+                            onMouseEnter={e => e.currentTarget.style.background = "#1D4ED8"}
+                            onMouseLeave={e => e.currentTarget.style.background = "#2563EB"}
+                        >
+                            + New Mission
+                        </button>
+                    </div>
+                )}
 
                 {/* Nav links */}
                 <nav style={{ padding: "6px 10px", flex: 1, display: isMobile ? "grid" : "block", gridTemplateColumns: isMobile ? "1fr 1fr" : "none", gap: isMobile ? 6 : 0 }}>
@@ -1302,7 +1376,26 @@ export default function App() {
                         ))}
                     </div>
 
-                    {isAdmin && (
+                    <div style={{ display: "flex", gap: 2, background: "#F3F4F6", border: "1px solid #E5E7EB", borderRadius: 8, padding: 3 }}>
+                        {[["owned", "My Projects"], ["shared", "Shared With Me"]].map(([scope, label]) => (
+                            <button key={scope} onClick={() => setProjectScope(scope)} style={{
+                                background: projectScope === scope ? "#FFFFFF" : "none",
+                                border: "none",
+                                boxShadow: projectScope === scope ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                                color: projectScope === scope ? "#111827" : "#6B7280",
+                                borderRadius: 6,
+                                padding: "6px 12px",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                fontFamily: "'Inter',sans-serif",
+                                fontWeight: projectScope === scope ? 600 : 400,
+                            }}>
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {isAdmin && projectScope === "owned" && (
                         <select
                             value={ownerFilter}
                             onChange={(e) => setOwnerFilter(e.target.value)}
@@ -1426,7 +1519,7 @@ export default function App() {
                         <div style={{ textAlign: "center", padding: "80px 0", color: "#9CA3AF" }}>
                             <div style={{ fontSize: 40, marginBottom: 12 }}>{"\u25CB"}</div>
                             <div style={{ fontSize: 16, fontWeight: 600, color: "#374151" }}>No missions found</div>
-                            <div style={{ fontSize: 13, marginTop: 4 }}>Click + New Mission to get started</div>
+                            <div style={{ fontSize: 13, marginTop: 4 }}>{isReadOnlyScope ? "No shared projects yet" : "Click + New Mission to get started"}</div>
                         </div>
                     ) : (
                         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(300px,1fr))", gap: 14, padding: isMobile ? "14px" : "20px 24px" }}>
@@ -1439,7 +1532,7 @@ export default function App() {
                 <div style={{ background: "#FFFFFF", borderTop: "1px solid #E5E7EB", padding: isMobile ? "12px 14px" : "12px 24px", display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap" }}>
                     {[
                         { icon: "\u25A6", label: "Total Projects", value: stats.total },
-                        { icon: "\u2714", label: "Active Tasks", value: projects.reduce((acc, p) => acc + (p.tasks?.filter(t => !t.done).length || 0), 0) },
+                        { icon: "\u2714", label: "Active Tasks", value: activeProjects.reduce((acc, p) => acc + (p.tasks?.filter(t => !t.done).length || 0), 0) },
                     ].map(f => (
                         <div key={f.label} style={{ display: "flex", alignItems: "center", gap: 7, color: "#6B7280", fontSize: 13 }}>
                             <span>{f.icon}</span>
@@ -1457,6 +1550,9 @@ export default function App() {
                     onClose={() => setModal(null)}
                     onSave={handleSave}
                     onDelete={handleDelete}
+                    readOnly={Boolean(modal !== "new" && modal?.readOnly)}
+                    canManageAccess={Boolean(modal !== "new" && (isAdmin || modal?.userId === sessionUserId))}
+                    onAccessChanged={refreshProjectLists}
                     theme={theme}
                 />
             )}

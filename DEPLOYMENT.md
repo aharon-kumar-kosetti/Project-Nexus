@@ -5,7 +5,9 @@
 1. Create a Neon project and copy the connection string.
 2. Run schema once against Neon:
    - `npm run db:schema`
-3. (Optional) Seed sample data:
+3. Run access migration (if upgrading existing DB):
+   - `npm run db:migrate:access`
+4. (Optional) Seed sample data:
    - `npm run db:seed`
 
 ## 2) Vercel Project
@@ -25,3 +27,4 @@
 - API is served via Vercel function at `api/[...all].js`.
 - Frontend is built by Vite and served from `dist`.
 - Sessions are cookie-based (24h), suitable for serverless deployment.
+- Project access migration is also auto-ensured on backend startup.

@@ -17,6 +17,7 @@ export default function ProjectCard({ project, onClick, onDragStart, theme }) {
     const doneTasks = project.tasks?.filter((t) => t.done).length || 0;
     const isLive = project.deployStatus === "live" || project.deployStatus === "Live" || project.deployed;
     const isUrgent = dl !== null && dl < 4;
+    const isReadOnly = Boolean(project.readOnly);
 
     // ── DARK MODE ──
     if (isDark) {
@@ -25,8 +26,11 @@ export default function ProjectCard({ project, onClick, onDragStart, theme }) {
 
         return (
             <div
-                draggable
-                onDragStart={(e) => onDragStart(e, project.id)}
+                draggable={!isReadOnly}
+                onDragStart={(e) => {
+                    if (isReadOnly) return;
+                    onDragStart(e, project.id);
+                }}
                 onClick={() => onClick(project)}
                 style={{
                     background: "#141824",
@@ -53,7 +57,21 @@ export default function ProjectCard({ project, onClick, onDragStart, theme }) {
                     <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, fontWeight: 700, color: "#E8EAF2", lineHeight: 1.3, flex: 1 }}>
                         {project.title}
                     </div>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, flexShrink: 0, marginTop: 5, marginLeft: 10, boxShadow: project.status === "Ongoing" ? `0 0 8px ${dotColor}` : "none" }} />
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 10 }}>
+                        {isReadOnly && (
+                            <span style={{
+                                fontSize: 10,
+                                color: "#8B91A8",
+                                border: "1px solid #1E2740",
+                                borderRadius: 4,
+                                padding: "1px 6px",
+                                letterSpacing: "0.05em",
+                            }}>
+                                READ ONLY
+                            </span>
+                        )}
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, flexShrink: 0, marginTop: 5, boxShadow: project.status === "Ongoing" ? `0 0 8px ${dotColor}` : "none" }} />
+                    </div>
                 </div>
 
                 {/* Description */}
@@ -116,8 +134,11 @@ export default function ProjectCard({ project, onClick, onDragStart, theme }) {
     // ── LIGHT MODE (existing HUD design) ──
     return (
         <div
-            draggable
-            onDragStart={(e) => onDragStart(e, project.id)}
+            draggable={!isReadOnly}
+            onDragStart={(e) => {
+                if (isReadOnly) return;
+                onDragStart(e, project.id);
+            }}
             onClick={() => onClick(project)}
             style={{
                 background: "#0c0c1e",
@@ -171,6 +192,11 @@ export default function ProjectCard({ project, onClick, onDragStart, theme }) {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                     <div style={{ flex: 1, marginRight: 10 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+                            {isReadOnly && (
+                                <span style={{ fontSize: 9, color: "#6B7280", border: "1px solid #D1D5DB", padding: "2px 7px", borderRadius: 3, fontFamily: "'Inter',sans-serif", fontWeight: 700 }}>
+                                    READ ONLY
+                                </span>
+                            )}
                             <span style={{ fontSize: 9, color: sc.color, fontFamily: "'Orbitron',monospace", fontWeight: 700, letterSpacing: 1.5, background: sc.glow, padding: "2px 7px", borderRadius: 3 }}>
                                 {sc.icon} {sc.tag}
                             </span>

@@ -15,6 +15,7 @@ export default function KanbanCard({ project, onDragStart, onClick, theme }) {
     const isDark = theme === "dark";
     const progress = calcProgress(project.tasks) ?? project.progress ?? 0;
     const days = project.deadline ? daysLeft(project.deadline) : null;
+    const isReadOnly = Boolean(project.readOnly);
 
     // ── DARK MODE CARD (matches image exactly) ──
     if (isDark) {
@@ -23,8 +24,11 @@ export default function KanbanCard({ project, onDragStart, onClick, theme }) {
 
         return (
             <div
-                draggable
-                onDragStart={(e) => onDragStart(e, project.id)}
+                draggable={!isReadOnly}
+                onDragStart={(e) => {
+                    if (isReadOnly) return;
+                    onDragStart(e, project.id);
+                }}
                 onClick={() => onClick(project)}
                 style={{
                     background: "#141824",
@@ -52,9 +56,23 @@ export default function KanbanCard({ project, onDragStart, onClick, theme }) {
                     <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, fontWeight: 700, color: "#E8EAF2", lineHeight: 1.3, flex: 1 }}>
                         {project.title}
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); onClick(project); }} style={{
-                        background: "none", border: "none", color: "#4A5170", cursor: "pointer", fontSize: 14, padding: "0 0 0 8px", lineHeight: 1
-                    }}>⋯</button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {isReadOnly && (
+                            <span style={{
+                                fontSize: 10,
+                                color: "#8B91A8",
+                                border: "1px solid #1E2740",
+                                borderRadius: 4,
+                                padding: "1px 6px",
+                                letterSpacing: "0.05em",
+                            }}>
+                                READ ONLY
+                            </span>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); onClick(project); }} style={{
+                            background: "none", border: "none", color: "#4A5170", cursor: "pointer", fontSize: 14, padding: "0 0 0 8px", lineHeight: 1
+                        }}>⋯</button>
+                    </div>
                 </div>
 
                 {/* Description */}
@@ -162,8 +180,11 @@ export default function KanbanCard({ project, onDragStart, onClick, theme }) {
 
     return (
         <div
-            draggable
-            onDragStart={(e) => onDragStart(e, project.id)}
+            draggable={!isReadOnly}
+            onDragStart={(e) => {
+                if (isReadOnly) return;
+                onDragStart(e, project.id);
+            }}
             onClick={() => onClick(project)}
             style={{
                 background: "#FFFFFF", border: "1px solid #E5E7EB",
@@ -180,6 +201,11 @@ export default function KanbanCard({ project, onDragStart, onClick, theme }) {
                     {project.title}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 8, flexShrink: 0 }}>
+                    {isReadOnly && (
+                        <span style={{ fontSize: 9, color: "#6B7280", border: "1px solid #D1D5DB", borderRadius: 4, padding: "1px 6px", fontFamily: "'Inter',sans-serif", fontWeight: 700 }}>
+                            READ ONLY
+                        </span>
+                    )}
                     {isCompleted && <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#D1FAE5", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#059669" }}>✓</span>}
                     <button onClick={(e) => { e.stopPropagation(); onClick(project); }} style={{ background: "none", border: "none", color: "#9CA3AF", cursor: "pointer", fontSize: 16, padding: "0 2px" }}>⋯</button>
                 </div>

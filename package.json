@@ -11,6 +11,7 @@
         "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
         "db:schema": "psql -U postgres -d project_nexus -f server/schema.sql",
         "db:migrate:ownership": "node server/migrate-users-ownership.js",
+        "db:migrate:access": "node server/migrate-project-access.js",
         "db:seed": "node server/seed.js"
     },
     "dependencies": {

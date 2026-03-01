@@ -2,17 +2,26 @@
 // MODAL — Project Create / Edit (Theme-Aware)
 // ═══════════════════════════════════════════════════
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { STATUSES, PRIORITIES, TECH_LIST } from "../constants";
 import { genId, calcProgress, fmtTime } from "../utils";
-import { uploadDocs, deleteDoc } from "../api/projects";
+import {
+    uploadDocs,
+    deleteDoc,
+    fetchProjectAccess,
+    searchProjectUsers,
+    grantProjectReadAccess,
+    revokeProjectReadAccess,
+} from "../api/projects";
 import TechBadge from "./TechBadge";
 
-const TABS = ["overview", "tech", "tasks", "docs", "activity"];
+const BASE_TABS = ["overview", "tech", "tasks", "docs", "activity"];
 
-export default function Modal({ project, onClose, onSave, onDelete, theme }) {
+export default function Modal({ project, onClose, onSave, onDelete, theme, readOnly = false, canManageAccess = false, onAccessChanged }) {
     const isDark = theme === "dark";
     const isNew = !project;
+    const isReadOnly = Boolean(readOnly && !isNew);
+    const tabs = [...BASE_TABS, ...(canManageAccess && !isNew ? ["access"] : [])];
 
     const [form, setForm] = useState(
         project
@@ -43,36 +52,75 @@ export default function Modal({ project, onClose, onSave, onDelete, theme }) {
     const [tagIn, setTagIn] = useState("");
     const [taskIn, setTaskIn] = useState("");
     const [techSearch, setTechSearch] = useState("");
+    const [accessQuery, setAccessQuery] = useState("");
+    const [accessResults, setAccessResults] = useState([]);
+    const [sharedUsers, setSharedUsers] = useState([]);
+    const [accessLoading, setAccessLoading] = useState(false);
+    const [accessError, setAccessError] = useState("");
+    const [accessSuccess, setAccessSuccess] = useState("");
     const fileRef = useRef();
 
     const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
     const prog = calcProgress(form.tasks) ?? form.progress;
 
+    useEffect(() => {
+        if (tabs.includes(tab)) return;
+        setTab("overview");
+    }, [tab, tabs]);
+
+    const loadSharedUsers = async () => {
+        if (isNew || !canManageAccess) return;
+        try {
+            const list = await fetchProjectAccess(form.id);
+            setSharedUsers(list || []);
+        } catch (err) {
+            console.error("Failed to load shared users:", err);
+            setAccessError(err?.message || "Failed to load access list.");
+        }
+    };
+
+    useEffect(() => {
+        if (tab !== "access" || isNew || !canManageAccess) return;
+        loadSharedUsers();
+    }, [tab, isNew, canManageAccess]);
+
     // ── Tag helpers ──
     const addTag = () => {
+        if (isReadOnly) return;
         if (tagIn.trim() && !form.tags.includes(tagIn.trim())) {
             set("tags", [...form.tags, tagIn.trim()]);
             setTagIn("");
         }
     };
-    const removeTag = (t) => set("tags", form.tags.filter((x) => x !== t));
+    const removeTag = (t) => {
+        if (isReadOnly) return;
+        set("tags", form.tags.filter((x) => x !== t));
+    };
 
     // ── Tech helpers ──
     const toggleTech = (t) =>
-        set("techStack", form.techStack.includes(t) ? form.techStack.filter((x) => x !== t) : [...form.techStack, t]);
+        !isReadOnly && set("techStack", form.techStack.includes(t) ? form.techStack.filter((x) => x !== t) : [...form.techStack, t]);
 
     // ── Task helpers ──
     const addTask = () => {
+        if (isReadOnly) return;
         if (taskIn.trim()) {
             set("tasks", [...form.tasks, { id: genId(), text: taskIn.trim(), done: false }]);
             setTaskIn("");
         }
     };
-    const toggleTask = (id) => set("tasks", form.tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
-    const removeTask = (id) => set("tasks", form.tasks.filter((t) => t.id !== id));
+    const toggleTask = (id) => {
+        if (isReadOnly) return;
+        set("tasks", form.tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+    };
+    const removeTask = (id) => {
+        if (isReadOnly) return;
+        set("tasks", form.tasks.filter((t) => t.id !== id));
+    };
 
     // ── File upload ──
     const handleFileUpload = async (e) => {
+        if (isReadOnly) return;
         const files = Array.from(e.target.files);
         const toUpload = files.filter((file) => {
             if (file.size > 4 * 1024 * 1024) { alert(`${file.name} exceeds 4MB limit.`); return false; }
@@ -101,6 +149,7 @@ export default function Modal({ project, onClose, onSave, onDelete, theme }) {
         }
     };
     const removeDoc = async (id) => {
+        if (isReadOnly) return;
         if (!isNew) {
             try { await deleteDoc(form.id, id); }
             catch (err) { console.error("Delete doc failed:", err); }
@@ -119,6 +168,10 @@ export default function Modal({ project, onClose, onSave, onDelete, theme }) {
 
     // ── Save handler ──
     const handleSave = () => {
+        if (isReadOnly) {
+            alert("This project is shared with you in read-only mode.");
+            return;
+        }
         if (!form.title.trim()) { alert("Title required!"); return; }
         const newLog = [...(form.activityLog || [])];
         if (isNew) {
@@ -135,6 +188,59 @@ export default function Modal({ project, onClose, onSave, onDelete, theme }) {
             newLog.push({ ts: new Date().toISOString(), action: changes.length > 0 ? changes.join(" · ") : "Project updated" });
         }
         onSave({ ...form, progress: prog, activityLog: newLog });
+    };
+
+    const handleSearchUsers = async () => {
+        const value = String(accessQuery || "").trim();
+        if (!value) {
+            setAccessResults([]);
+            setAccessError("");
+            return;
+        }
+
+        setAccessLoading(true);
+        setAccessError("");
+        setAccessSuccess("");
+
+        try {
+            const result = await searchProjectUsers(form.id, value);
+            setAccessResults(result || []);
+        } catch (err) {
+            console.error("Failed to search users:", err);
+            setAccessError(err?.message || "Failed to search users.");
+        } finally {
+            setAccessLoading(false);
+        }
+    };
+
+    const handleGrantAccess = async (userId) => {
+        try {
+            setAccessError("");
+            setAccessSuccess("");
+            await grantProjectReadAccess(form.id, userId);
+            setAccessSuccess(`Read-only access granted to ${userId}.`);
+            await loadSharedUsers();
+            await handleSearchUsers();
+            if (onAccessChanged) await onAccessChanged();
+        } catch (err) {
+            console.error("Failed to grant access:", err);
+            setAccessError(err?.message || "Failed to grant access.");
+        }
+    };
+
+    const handleRevokeAccess = async (userId) => {
+        try {
+            setAccessError("");
+            setAccessSuccess("");
+            await revokeProjectReadAccess(form.id, userId);
+            setAccessSuccess(`Access removed for ${userId}.`);
+            await loadSharedUsers();
+            await handleSearchUsers();
+            if (onAccessChanged) await onAccessChanged();
+        } catch (err) {
+            console.error("Failed to revoke access:", err);
+            setAccessError(err?.message || "Failed to revoke access.");
+        }
     };
 
     // ═══════════════════════════════════════════════════
@@ -227,7 +333,7 @@ export default function Modal({ project, onClose, onSave, onDelete, theme }) {
 
                     {/* ── TABS ── */}
                     <div style={{ display: "flex", gap: isDark ? 0 : 4, borderBottom: `1px solid ${S.border}` }}>
-                        {TABS.map((t) => (
+                        {tabs.map((t) => (
                             <button
                                 key={t}
                                 onClick={() => setTab(t)}
@@ -254,6 +360,20 @@ export default function Modal({ project, onClose, onSave, onDelete, theme }) {
                 </div>
 
                 <div style={{ padding: isDark ? "20px 24px 28px" : "20px 28px 28px" }}>
+                    {isReadOnly && (
+                        <div style={{
+                            marginBottom: 12,
+                            border: `1px solid ${isDark ? "#1E2740" : "#E5E7EB"}`,
+                            background: isDark ? "#0B0D18" : "#F9FAFB",
+                            color: isDark ? "#8B91A8" : "#6B7280",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            fontSize: 12,
+                            fontFamily: "'Inter',sans-serif",
+                        }}>
+                            Read-only mode: You can view this shared project, but cannot edit, upload, or delete.
+                        </div>
+                    )}
 
                     {/* ── OVERVIEW TAB ── */}
                     {tab === "overview" && (
@@ -536,10 +656,131 @@ export default function Modal({ project, onClose, onSave, onDelete, theme }) {
                         </div>
                     )}
 
+                    {/* ── ACCESS TAB ── */}
+                    {tab === "access" && canManageAccess && !isNew && (
+                        <div style={{ display: "grid", gap: 14 }}>
+                            <div>
+                                <label style={LBL}>Grant Read-Only Access</label>
+                                <div style={{ display: "flex", gap: 8 }}>
+                                    <input
+                                        style={{ ...INP, flex: 1 }}
+                                        value={accessQuery}
+                                        onChange={(e) => setAccessQuery(e.target.value)}
+                                        placeholder="Type user ID (prefix search)..."
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                handleSearchUsers();
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        onClick={handleSearchUsers}
+                                        disabled={accessLoading}
+                                        style={{
+                                            background: S.accentColor,
+                                            border: "none",
+                                            color: "#fff",
+                                            borderRadius: isDark ? 8 : 6,
+                                            padding: "0 14px",
+                                            cursor: "pointer",
+                                            fontSize: 12,
+                                            fontFamily: "'Inter',sans-serif",
+                                            fontWeight: 600,
+                                            opacity: accessLoading ? 0.75 : 1,
+                                        }}
+                                    >
+                                        {accessLoading ? "Searching..." : "Search"}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {accessError && (
+                                <div style={{ fontSize: 12, color: "#DC2626", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "8px 10px" }}>
+                                    {accessError}
+                                </div>
+                            )}
+                            {accessSuccess && (
+                                <div style={{ fontSize: 12, color: "#065F46", background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 8, padding: "8px 10px" }}>
+                                    {accessSuccess}
+                                </div>
+                            )}
+
+                            <div>
+                                <label style={LBL}>Search Results</label>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    {accessResults.length === 0 ? (
+                                        <div style={{ fontSize: 12, color: S.textMuted }}>No matching users yet.</div>
+                                    ) : (
+                                        accessResults.map((user) => (
+                                            <div key={user.userId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: `1px solid ${S.border}`, background: S.surface, borderRadius: 8, padding: "8px 10px" }}>
+                                                <div>
+                                                    <div style={{ fontSize: 13, color: S.textPrimary, fontWeight: 600 }}>{user.displayName || user.userId}</div>
+                                                    <div style={{ fontSize: 11, color: S.textMuted }}>{user.userId} · {user.role}</div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleGrantAccess(user.userId)}
+                                                    disabled={user.hasAccess}
+                                                    style={{
+                                                        background: user.hasAccess ? (isDark ? "#1E2740" : "#E5E7EB") : S.accentColor,
+                                                        border: "none",
+                                                        color: user.hasAccess ? S.textMuted : "#fff",
+                                                        borderRadius: 6,
+                                                        padding: "6px 10px",
+                                                        cursor: user.hasAccess ? "not-allowed" : "pointer",
+                                                        fontSize: 12,
+                                                        fontWeight: 600,
+                                                    }}
+                                                >
+                                                    {user.hasAccess ? "Already Granted" : "Grant"}
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={LBL}>Users With Access</label>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    {sharedUsers.length === 0 ? (
+                                        <div style={{ fontSize: 12, color: S.textMuted }}>No users have access yet.</div>
+                                    ) : (
+                                        sharedUsers.map((user) => (
+                                            <div key={user.userId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: `1px solid ${S.border}`, background: S.surface, borderRadius: 8, padding: "8px 10px" }}>
+                                                <div>
+                                                    <div style={{ fontSize: 13, color: S.textPrimary, fontWeight: 600 }}>{user.displayName || user.userId}</div>
+                                                    <div style={{ fontSize: 11, color: S.textMuted }}>
+                                                        {user.userId} · {user.accessLevel} · granted by {user.grantedByUserId}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleRevokeAccess(user.userId)}
+                                                    style={{
+                                                        background: isDark ? "rgba(255,75,75,0.08)" : "#FEE2E2",
+                                                        border: `1px solid ${isDark ? "rgba(255,75,75,0.3)" : "#FCA5A5"}`,
+                                                        color: isDark ? "#FF4B4B" : "#DC2626",
+                                                        borderRadius: 6,
+                                                        padding: "6px 10px",
+                                                        cursor: "pointer",
+                                                        fontSize: 12,
+                                                        fontWeight: 600,
+                                                    }}
+                                                >
+                                                    Revoke
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* ── ACTION BUTTONS ── */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 24, paddingTop: 16, borderTop: `1px solid ${isDark ? "#1E2740" : "#ffffff08"}` }}>
                         <div>
-                            {!isNew && (
+                            {!isNew && !isReadOnly && (
                                 <button onClick={() => onDelete(project.id)} style={{
                                     background: isDark ? "rgba(255,75,75,0.08)" : "#FEE2E2",
                                     border: `1px solid ${isDark ? "rgba(255,75,75,0.3)" : "#FCA5A5"}`,
@@ -567,22 +808,39 @@ export default function Modal({ project, onClose, onSave, onDelete, theme }) {
                             }}>
                                 Cancel
                             </button>
-                            <button onClick={handleSave} style={{
-                                background: isDark ? "#2979FF" : S.accentColor,
-                                border: "none", color: "#fff",
-                                borderRadius: isDark ? 8 : 7, padding: "10px 24px", cursor: "pointer",
-                                fontSize: 13,
-                                fontFamily: "'Inter',sans-serif",
-                                fontWeight: 700,
-                                letterSpacing: 0,
-                                boxShadow: isDark ? "0 4px 16px rgba(41,121,255,0.35)" : "0 4px 16px rgba(37,99,235,0.22)",
-                                transition: "all 0.15s",
-                            }}
-                                onMouseEnter={e => { if (isDark) e.currentTarget.style.filter = "brightness(1.1)"; }}
-                                onMouseLeave={e => { e.currentTarget.style.filter = ""; }}
-                            >
-                                {isNew ? "Create Project" : "Save Changes"}
-                            </button>
+                            {!isReadOnly && (
+                                <button onClick={handleSave} style={{
+                                    background: isDark ? "#2979FF" : S.accentColor,
+                                    border: "none", color: "#fff",
+                                    borderRadius: isDark ? 8 : 7, padding: "10px 24px", cursor: "pointer",
+                                    fontSize: 13,
+                                    fontFamily: "'Inter',sans-serif",
+                                    fontWeight: 700,
+                                    letterSpacing: 0,
+                                    boxShadow: isDark ? "0 4px 16px rgba(41,121,255,0.35)" : "0 4px 16px rgba(37,99,235,0.22)",
+                                    transition: "all 0.15s",
+                                }}
+                                    onMouseEnter={e => { if (isDark) e.currentTarget.style.filter = "brightness(1.1)"; }}
+                                    onMouseLeave={e => { e.currentTarget.style.filter = ""; }}
+                                >
+                                    {isNew ? "Create Project" : "Save Changes"}
+                                </button>
+                            )}
+                            {isReadOnly && (
+                                <button style={{
+                                    background: isDark ? "#1E2740" : "#E5E7EB",
+                                    border: "none",
+                                    color: isDark ? "#8B91A8" : "#6B7280",
+                                    borderRadius: isDark ? 8 : 7,
+                                    padding: "10px 16px",
+                                    cursor: "not-allowed",
+                                    fontSize: 12,
+                                    fontFamily: "'Inter',sans-serif",
+                                    fontWeight: 600,
+                                }}>
+                                    Read-only project
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

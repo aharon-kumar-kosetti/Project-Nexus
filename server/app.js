@@ -8,9 +8,12 @@ import projectRoutes from "./routes/projects.js";
 import uploadRoutes from "./routes/uploads.js";
 import supportRoutes from "./routes/support.js";
 import { requireAuth } from "./middleware/auth.js";
+import { ensureMigrations } from "./migrations.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+
+await ensureMigrations();
 
 const frontendOrigin = process.env.FRONTEND_ORIGIN;
 
