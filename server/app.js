@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import authRoutes from "./routes/auth.js";
 import projectRoutes from "./routes/projects.js";
 import uploadRoutes from "./routes/uploads.js";
+import supportRoutes from "./routes/support.js";
 import { requireAuth } from "./middleware/auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -40,6 +41,7 @@ app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 app.use("/api/auth", authRoutes);
 app.use("/api/projects", requireAuth, projectRoutes);
 app.use("/api/projects", requireAuth, uploadRoutes);
+app.use("/api/support", requireAuth, supportRoutes);
 
 app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });

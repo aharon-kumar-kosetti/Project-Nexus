@@ -103,6 +103,18 @@ async function migrate() {
         );
         await client.query("CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)");
 
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS support_messages (
+                id             BIGSERIAL PRIMARY KEY,
+                sender_user_id VARCHAR(100) NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                message_text   TEXT NOT NULL,
+                is_read        BOOLEAN NOT NULL DEFAULT false,
+                created_at     TIMESTAMPTZ DEFAULT NOW()
+            )
+        `);
+        await client.query("CREATE INDEX IF NOT EXISTS idx_support_messages_created_at ON support_messages(created_at DESC)");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_support_messages_is_read ON support_messages(is_read)");
+
         await client.query("COMMIT");
 
         console.log("✅ Migration complete.");

@@ -6,6 +6,7 @@ import { STATUSES, PRIORITIES, APP_VERSION } from "./constants";
 import { calcProgress, daysLeft } from "./utils";
 import { fetchProjects, fetchUsers, createProject, updateProject, deleteProject } from "./api/projects";
 import { login, getSession, logout, updatePassword, updateProfile, createUserAsAdmin } from "./api/auth";
+import { fetchSupportMessages, sendSupportMessage, markSupportMessageRead } from "./api/support";
 import { useTheme } from "./context/ThemeContext";
 import ProjectCard from "./components/ProjectCard";
 import KanbanBoard from "./components/KanbanBoard";
@@ -53,9 +54,22 @@ export default function App() {
     const [sessionRole, setSessionRole] = useState("user");
     const [users, setUsers] = useState([]);
     const [ownerFilter, setOwnerFilter] = useState("all");
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [settingsError, setSettingsError] = useState("");
+    const [settingsSuccess, setSettingsSuccess] = useState("");
+    const [displayNameForm, setDisplayNameForm] = useState("");
+    const [passwordForm, setPasswordForm] = useState("");
+    const [newUserId, setNewUserId] = useState("");
+    const [newUserDisplayName, setNewUserDisplayName] = useState("");
+    const [newUserPassword, setNewUserPassword] = useState("");
+    const [newUserRole, setNewUserRole] = useState("user");
+    const [settingsTab, setSettingsTab] = useState("account");
+    const [supportMessageForm, setSupportMessageForm] = useState("");
+    const [supportMessages, setSupportMessages] = useState([]);
 
     const isDark = theme === "dark";
     const isAdmin = sessionRole === "admin";
+    const unreadSupportCount = supportMessages.filter((message) => !message.isRead).length;
 
     // Check auth session on app start
     useEffect(() => {
@@ -138,6 +152,38 @@ export default function App() {
         return () => window.removeEventListener("resize", onResize);
     }, []);
 
+    useEffect(() => {
+        setDisplayNameForm(sessionDisplayName || sessionUserId || "");
+    }, [sessionDisplayName, sessionUserId]);
+
+    useEffect(() => {
+        if (!isAuthenticated || !isAdmin) {
+            setSupportMessages([]);
+            return;
+        }
+
+        let active = true;
+
+        const loadSupportMessages = async () => {
+            try {
+                const messages = await fetchSupportMessages();
+                if (active) {
+                    setSupportMessages(messages || []);
+                }
+            } catch (err) {
+                console.error("Failed to refresh support messages:", err);
+            }
+        };
+
+        loadSupportMessages();
+        const intervalId = setInterval(loadSupportMessages, 30000);
+
+        return () => {
+            active = false;
+            clearInterval(intervalId);
+        };
+    }, [isAuthenticated, isAdmin]);
+
     const handleLogin = async (e) => {
         e.preventDefault();
         if (loginBooting) return;
@@ -189,16 +235,53 @@ export default function App() {
             setSessionRole("user");
             setUsers([]);
             setOwnerFilter("all");
+            setSettingsOpen(false);
+            setSettingsError("");
+            setSettingsSuccess("");
+            setDisplayNameForm("");
+            setPasswordForm("");
+            setNewUserId("");
+            setNewUserDisplayName("");
+            setNewUserPassword("");
+            setNewUserRole("user");
         }
     };
 
-    const handleChangeName = async () => {
-        const nextDisplayName = prompt("Enter your new display name:", sessionDisplayName || sessionUserId);
-        if (nextDisplayName === null) return;
+    const openSettings = () => {
+        setSettingsOpen(true);
+        setSettingsError("");
+        setSettingsSuccess("");
+        setSettingsTab("account");
+        setDisplayNameForm(sessionDisplayName || sessionUserId || "");
+        setPasswordForm("");
+        setNewUserId("");
+        setNewUserDisplayName("");
+        setNewUserPassword("");
+        setNewUserRole("user");
+        setSupportMessageForm("");
 
-        const value = String(nextDisplayName).trim();
+        (async () => {
+            try {
+                const messages = await fetchSupportMessages();
+                setSupportMessages(messages || []);
+            } catch (err) {
+                console.error("Failed to load support messages:", err);
+            }
+        })();
+    };
+
+    const closeSettings = () => {
+        setSettingsOpen(false);
+        setSettingsError("");
+        setSettingsSuccess("");
+    };
+
+    const handleChangeName = async (e) => {
+        e.preventDefault();
+        const value = String(displayNameForm || "").trim();
         if (!value) {
-            setApiError("Display name cannot be empty.");
+            setSettingsError("Display name cannot be empty.");
+            setSettingsSuccess("");
             return;
         }
 
@@ -209,76 +292,113 @@ export default function App() {
                 const usersData = await fetchUsers();
                 setUsers(usersData || []);
             }
-            setApiError("");
+            setSettingsError("");
+            setSettingsSuccess("Name updated.");
         } catch (err) {
             console.error("Failed to update display name:", err);
-            setApiError(`Could not update display name: ${err?.message || "Please try again."}`);
+            setSettingsError(`Could not update name: ${err?.message || "Please try again."}`);
+            setSettingsSuccess("");
         }
     };
 
-    const handleChangePassword = async () => {
-        const nextPassword = prompt("Enter your new password:");
-        if (nextPassword === null) return;
-
-        const value = String(nextPassword);
-        if (!value.trim()) {
-            setApiError("Password cannot be empty.");
+    const handleChangePassword = async (e) => {
+        e.preventDefault();
+        const value = String(passwordForm || "").trim();
+        if (!value) {
+            setSettingsError("Password cannot be empty.");
+            setSettingsSuccess("");
             return;
         }
 
         try {
             await updatePassword(sessionUserId, value);
-            setApiError("");
-            alert("Password updated successfully.");
+            setPasswordForm("");
+            setSettingsError("");
+            setSettingsSuccess("Password updated.");
         } catch (err) {
             console.error("Failed to update password:", err);
-            setApiError(`Could not update password: ${err?.message || "Please try again."}`);
+            setSettingsError(`Could not update password: ${err?.message || "Please try again."}`);
+            setSettingsSuccess("");
         }
     };
 
-    const handleAdminCreateUser = async () => {
+    const handleAdminCreateUser = async (e) => {
+        e.preventDefault();
         if (!isAdmin) return;
 
-        const userId = prompt("New user's login ID (userId):");
-        if (userId === null) return;
+        const normalizedUserId = String(newUserId || "").trim();
+        const normalizedPassword = String(newUserPassword || "").trim();
+        const normalizedDisplayName = String(newUserDisplayName || normalizedUserId).trim() || normalizedUserId;
 
-        const normalizedUserId = String(userId).trim();
         if (!normalizedUserId) {
-            setApiError("User ID is required.");
+            setSettingsError("User ID is required.");
+            setSettingsSuccess("");
             return;
         }
 
-        const password = prompt("Temporary password for this user:");
-        if (password === null) return;
-
-        const normalizedPassword = String(password);
-        if (!normalizedPassword.trim()) {
-            setApiError("Password is required.");
+        if (!normalizedPassword) {
+            setSettingsError("Password is required.");
+            setSettingsSuccess("");
             return;
         }
-
-        const displayNameInput = prompt("Display name (optional):", normalizedUserId);
-        if (displayNameInput === null) return;
-
-        const roleInput = prompt("Role? Type admin or user", "user");
-        if (roleInput === null) return;
-        const role = String(roleInput).trim().toLowerCase() === "admin" ? "admin" : "user";
 
         try {
             await createUserAsAdmin({
                 userId: normalizedUserId,
                 password: normalizedPassword,
-                displayName: String(displayNameInput).trim() || normalizedUserId,
-                role,
+                displayName: normalizedDisplayName,
+                role: newUserRole === "admin" ? "admin" : "user",
             });
 
             const usersData = await fetchUsers();
             setUsers(usersData || []);
-            setApiError("");
-            alert("User created successfully.");
+            setNewUserId("");
+            setNewUserDisplayName("");
+            setNewUserPassword("");
+            setNewUserRole("user");
+            setSettingsError("");
+            setSettingsSuccess("User created successfully.");
         } catch (err) {
             console.error("Failed to create user:", err);
-            setApiError(`Could not create user: ${err?.message || "Please try again."}`);
+            setSettingsError(`Could not create user: ${err?.message || "Please try again."}`);
+            setSettingsSuccess("");
+        }
+    };
+
+    const handleSendSupportMessage = async (e) => {
+        e.preventDefault();
+        const value = String(supportMessageForm || "").trim();
+        if (!value) {
+            setSettingsError("Message cannot be empty.");
+            setSettingsSuccess("");
+            return;
+        }
+
+        try {
+            await sendSupportMessage(value);
+            const messages = await fetchSupportMessages();
+            setSupportMessages(messages || []);
+            setSupportMessageForm("");
+            setSettingsError("");
+            setSettingsSuccess("Message sent to admin.");
+        } catch (err) {
+            console.error("Failed to send support message:", err);
+            setSettingsError(`Could not send message: ${err?.message || "Please try again."}`);
+            setSettingsSuccess("");
+        }
+    };
+
+    const handleMarkMessageRead = async (id) => {
+        if (!isAdmin) return;
+        try {
+            await markSupportMessageRead(id);
+            const messages = await fetchSupportMessages();
+            setSupportMessages(messages || []);
+            setSettingsError("");
+        } catch (err) {
+            console.error("Failed to mark message read:", err);
+            setSettingsError(`Could not mark message as read: ${err?.message || "Please try again."}`);
+            setSettingsSuccess("");
         }
     };
 
@@ -571,6 +691,257 @@ export default function App() {
         </div>
     ) : null;
 
+    const settingsPanel = settingsOpen ? (
+        <div
+            style={{
+                position: "fixed",
+                inset: 0,
+                background: isDark ? "rgba(3,6,14,0.72)" : "rgba(17,24,39,0.35)",
+                zIndex: 1200,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                padding: 16,
+            }}
+            onClick={closeSettings}
+        >
+            <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                    width: "100%",
+                    maxWidth: 520,
+                    maxHeight: "88vh",
+                    overflowY: "auto",
+                    background: isDark ? "#0F1322" : "#FFFFFF",
+                    border: `1px solid ${isDark ? "#243153" : "#E5E7EB"}`,
+                    borderRadius: 12,
+                    boxShadow: isDark ? "0 24px 56px rgba(0,0,0,0.6)" : "0 20px 40px rgba(15,23,42,0.18)",
+                    padding: 18,
+                }}
+            >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <div>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: isDark ? "#E8EAF2" : "#111827" }}>Settings</div>
+                        <div style={{ fontSize: 12, color: isDark ? "#8B91A8" : "#6B7280" }}>
+                            {sessionDisplayName || sessionUserId} · {isAdmin ? "Admin" : "User"}
+                        </div>
+                    </div>
+                    <button
+                        onClick={closeSettings}
+                        style={{
+                            background: "transparent",
+                            border: "none",
+                            color: isDark ? "#8B91A8" : "#6B7280",
+                            cursor: "pointer",
+                            fontSize: 18,
+                        }}
+                    >
+                        ✕
+                    </button>
+                </div>
+
+                {settingsError && (
+                    <div style={{ marginBottom: 10, fontSize: 12, color: "#B91C1C", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "8px 10px" }}>
+                        {settingsError}
+                    </div>
+                )}
+                {settingsSuccess && (
+                    <div style={{ marginBottom: 10, fontSize: 12, color: "#065F46", background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 8, padding: "8px 10px" }}>
+                        {settingsSuccess}
+                    </div>
+                )}
+
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                    {["account", "appearance", "support", ...(isAdmin ? ["users", "notifications"] : [])].map((tab) => (
+                        <button
+                            key={tab}
+                            onClick={() => setSettingsTab(tab)}
+                            style={{
+                                background: settingsTab === tab ? "#2979FF" : (isDark ? "#141824" : "#F3F4F6"),
+                                color: settingsTab === tab ? "#fff" : (isDark ? "#8B91A8" : "#4B5563"),
+                                border: `1px solid ${settingsTab === tab ? "#2979FF" : (isDark ? "#1E2740" : "#E5E7EB")}`,
+                                borderRadius: 8,
+                                padding: "6px 10px",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                textTransform: "capitalize",
+                            }}
+                        >
+                            {tab === "notifications" ? `notifications (${unreadSupportCount})` : tab}
+                        </button>
+                    ))}
+                </div>
+
+                {settingsTab === "account" && (
+                    <>
+                        <form onSubmit={handleChangeName} style={{ marginBottom: 12, padding: 12, borderRadius: 10, border: `1px solid ${isDark ? "#1E2740" : "#E5E7EB"}`, background: isDark ? "#0B0D18" : "#F9FAFB" }}>
+                            <div style={{ fontSize: 12, color: isDark ? "#8B91A8" : "#6B7280", marginBottom: 8 }}>Name</div>
+                            <input
+                                value={displayNameForm}
+                                onChange={(e) => setDisplayNameForm(e.target.value)}
+                                placeholder="Display name"
+                                style={{ width: "100%", boxSizing: "border-box", marginBottom: 8, background: isDark ? "#141824" : "#fff", border: `1px solid ${isDark ? "#1E2740" : "#D1D5DB"}`, borderRadius: 8, color: isDark ? "#E8EAF2" : "#111827", padding: "9px 10px", fontSize: 13, outline: "none" }}
+                            />
+                            <button type="submit" style={{ background: "#2979FF", border: "none", color: "#fff", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                                Update Name
+                            </button>
+                        </form>
+
+                        <form onSubmit={handleChangePassword} style={{ marginBottom: 12, padding: 12, borderRadius: 10, border: `1px solid ${isDark ? "#1E2740" : "#E5E7EB"}`, background: isDark ? "#0B0D18" : "#F9FAFB" }}>
+                            <div style={{ fontSize: 12, color: isDark ? "#8B91A8" : "#6B7280", marginBottom: 8 }}>Password</div>
+                            <input
+                                type="password"
+                                value={passwordForm}
+                                onChange={(e) => setPasswordForm(e.target.value)}
+                                placeholder="New password"
+                                style={{ width: "100%", boxSizing: "border-box", marginBottom: 8, background: isDark ? "#141824" : "#fff", border: `1px solid ${isDark ? "#1E2740" : "#D1D5DB"}`, borderRadius: 8, color: isDark ? "#E8EAF2" : "#111827", padding: "9px 10px", fontSize: 13, outline: "none" }}
+                            />
+                            <button type="submit" style={{ background: "#2979FF", border: "none", color: "#fff", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                                Update Password
+                            </button>
+                        </form>
+                    </>
+                )}
+
+                {settingsTab === "appearance" && (
+                    <div style={{ marginBottom: 12, padding: 12, borderRadius: 10, border: `1px solid ${isDark ? "#1E2740" : "#E5E7EB"}`, background: isDark ? "#0B0D18" : "#F9FAFB" }}>
+                        <div style={{ fontSize: 12, color: isDark ? "#8B91A8" : "#6B7280", marginBottom: 8 }}>Theme</div>
+                        <button
+                            onClick={toggle}
+                            style={{
+                                background: isDark ? "#141824" : "#111827",
+                                border: `1px solid ${isDark ? "#1E2740" : "#374151"}`,
+                                color: "#F9FAFB",
+                                borderRadius: 8,
+                                padding: "8px 12px",
+                                cursor: "pointer",
+                                fontSize: 13,
+                                fontWeight: 600,
+                            }}
+                        >
+                            {isDark ? "Switch to Light Theme" : "Switch to Dark Theme"}
+                        </button>
+                    </div>
+                )}
+
+                {settingsTab === "support" && (
+                    <>
+                        <form onSubmit={handleSendSupportMessage} style={{ marginBottom: 12, padding: 12, borderRadius: 10, border: `1px solid ${isDark ? "#1E2740" : "#E5E7EB"}`, background: isDark ? "#0B0D18" : "#F9FAFB" }}>
+                            <div style={{ fontSize: 12, color: isDark ? "#8B91A8" : "#6B7280", marginBottom: 8 }}>Send suggestion / message to admin</div>
+                            <textarea
+                                value={supportMessageForm}
+                                onChange={(e) => setSupportMessageForm(e.target.value)}
+                                placeholder="Type your suggestion or issue..."
+                                rows={4}
+                                style={{ width: "100%", boxSizing: "border-box", marginBottom: 8, background: isDark ? "#141824" : "#fff", border: `1px solid ${isDark ? "#1E2740" : "#D1D5DB"}`, borderRadius: 8, color: isDark ? "#E8EAF2" : "#111827", padding: "9px 10px", fontSize: 13, outline: "none", resize: "vertical" }}
+                            />
+                            <button type="submit" style={{ background: "#2979FF", border: "none", color: "#fff", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                                Send
+                            </button>
+                        </form>
+
+                        <div style={{ padding: 12, borderRadius: 10, border: `1px solid ${isDark ? "#1E2740" : "#E5E7EB"}`, background: isDark ? "#0B0D18" : "#F9FAFB" }}>
+                            <div style={{ fontSize: 12, color: isDark ? "#8B91A8" : "#6B7280", marginBottom: 8 }}>Recent messages</div>
+                            {supportMessages.length === 0 ? (
+                                <div style={{ fontSize: 12, color: isDark ? "#6B7280" : "#9CA3AF" }}>No messages yet.</div>
+                            ) : (
+                                supportMessages.map((message) => (
+                                    <div key={message.id} style={{ borderTop: `1px solid ${isDark ? "#1E2740" : "#E5E7EB"}`, paddingTop: 8, marginTop: 8 }}>
+                                        <div style={{ fontSize: 12, color: isDark ? "#8B91A8" : "#6B7280" }}>
+                                            {message.senderDisplayName} · {new Date(message.createdAt).toLocaleString()}
+                                        </div>
+                                        <div style={{ fontSize: 13, color: isDark ? "#E8EAF2" : "#111827", marginTop: 4 }}>{message.messageText}</div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </>
+                )}
+
+                {isAdmin && settingsTab === "users" && (
+                    <form onSubmit={handleAdminCreateUser} style={{ marginBottom: 12, padding: 12, borderRadius: 10, border: `1px solid ${isDark ? "#1E2740" : "#E5E7EB"}`, background: isDark ? "#0B0D18" : "#F9FAFB" }}>
+                        <div style={{ fontSize: 12, color: isDark ? "#8B91A8" : "#6B7280", marginBottom: 8 }}>Create user</div>
+                        <input
+                            value={newUserId}
+                            onChange={(e) => setNewUserId(e.target.value)}
+                            placeholder="User ID"
+                            style={{ width: "100%", boxSizing: "border-box", marginBottom: 8, background: isDark ? "#141824" : "#fff", border: `1px solid ${isDark ? "#1E2740" : "#D1D5DB"}`, borderRadius: 8, color: isDark ? "#E8EAF2" : "#111827", padding: "9px 10px", fontSize: 13, outline: "none" }}
+                        />
+                        <input
+                            value={newUserDisplayName}
+                            onChange={(e) => setNewUserDisplayName(e.target.value)}
+                            placeholder="Display name"
+                            style={{ width: "100%", boxSizing: "border-box", marginBottom: 8, background: isDark ? "#141824" : "#fff", border: `1px solid ${isDark ? "#1E2740" : "#D1D5DB"}`, borderRadius: 8, color: isDark ? "#E8EAF2" : "#111827", padding: "9px 10px", fontSize: 13, outline: "none" }}
+                        />
+                        <input
+                            type="password"
+                            value={newUserPassword}
+                            onChange={(e) => setNewUserPassword(e.target.value)}
+                            placeholder="Temporary password"
+                            style={{ width: "100%", boxSizing: "border-box", marginBottom: 8, background: isDark ? "#141824" : "#fff", border: `1px solid ${isDark ? "#1E2740" : "#D1D5DB"}`, borderRadius: 8, color: isDark ? "#E8EAF2" : "#111827", padding: "9px 10px", fontSize: 13, outline: "none" }}
+                        />
+                        <select
+                            value={newUserRole}
+                            onChange={(e) => setNewUserRole(e.target.value)}
+                            style={{ width: "100%", boxSizing: "border-box", marginBottom: 8, background: isDark ? "#141824" : "#fff", border: `1px solid ${isDark ? "#1E2740" : "#D1D5DB"}`, borderRadius: 8, color: isDark ? "#E8EAF2" : "#111827", padding: "9px 10px", fontSize: 13, outline: "none" }}
+                        >
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                        <button type="submit" style={{ background: "#00A67E", border: "none", color: "#fff", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                            Create User
+                        </button>
+                    </form>
+                )}
+
+                {isAdmin && settingsTab === "notifications" && (
+                    <div style={{ marginBottom: 12, padding: 12, borderRadius: 10, border: `1px solid ${isDark ? "#1E2740" : "#E5E7EB"}`, background: isDark ? "#0B0D18" : "#F9FAFB" }}>
+                        <div style={{ fontSize: 12, color: isDark ? "#8B91A8" : "#6B7280", marginBottom: 8 }}>User notifications</div>
+                        {supportMessages.length === 0 ? (
+                            <div style={{ fontSize: 12, color: isDark ? "#6B7280" : "#9CA3AF" }}>No notifications yet.</div>
+                        ) : (
+                            supportMessages.map((message) => (
+                                <div key={message.id} style={{ borderTop: `1px solid ${isDark ? "#1E2740" : "#E5E7EB"}`, paddingTop: 8, marginTop: 8 }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                                        <div style={{ fontSize: 12, color: isDark ? "#8B91A8" : "#6B7280" }}>
+                                            {message.senderDisplayName} · {new Date(message.createdAt).toLocaleString()}
+                                        </div>
+                                        {!message.isRead && (
+                                            <button
+                                                onClick={() => handleMarkMessageRead(message.id)}
+                                                style={{ background: "#2563EB", border: "none", color: "#fff", borderRadius: 6, padding: "5px 8px", cursor: "pointer", fontSize: 11 }}
+                                            >
+                                                Mark read
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div style={{ fontSize: 13, color: isDark ? "#E8EAF2" : "#111827", marginTop: 4 }}>{message.messageText}</div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                )}
+
+                <button
+                    onClick={handleLogout}
+                    style={{
+                        width: "100%",
+                        background: "#FEF2F2",
+                        border: "1px solid #FECACA",
+                        color: "#B91C1C",
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        fontWeight: 600,
+                    }}
+                >
+                    Logout
+                </button>
+            </div>
+        </div>
+    ) : null;
+
     // Dark mode - clean design
     if (isDark) {
         return (
@@ -660,55 +1031,34 @@ export default function App() {
                         + New Mission
                     </button>
 
-                    {isAdmin && (
-                        <button
-                            onClick={handleAdminCreateUser}
-                            style={{
-                                background: "#141824", border: "1px solid #1E2740",
-                                borderRadius: 8, padding: "8px 12px", cursor: "pointer",
-                                color: "#6EE7B7", fontSize: 12, transition: "all 0.15s",
-                                fontFamily: "'Inter', sans-serif", fontWeight: 600,
-                            }}
-                        >
-                            + Create User
-                        </button>
-                    )}
-
-                    <button onClick={handleChangeName} title="Change Name" style={{
+                    <button onClick={openSettings} title="Settings" style={{
                         background: "#141824", border: "1px solid #1E2740",
                         borderRadius: 8, padding: "8px 12px", cursor: "pointer",
-                        color: "#8B91A8", fontSize: 12, transition: "all 0.15s",
-                        fontFamily: "'Inter', sans-serif", fontWeight: 600,
-                    }}>
-                        Name
-                    </button>
-
-                    <button onClick={handleChangePassword} title="Change Password" style={{
-                        background: "#141824", border: "1px solid #1E2740",
-                        borderRadius: 8, padding: "8px 12px", cursor: "pointer",
-                        color: "#8B91A8", fontSize: 12, transition: "all 0.15s",
-                        fontFamily: "'Inter', sans-serif", fontWeight: 600,
-                    }}>
-                        Password
-                    </button>
-
-                    <button onClick={handleLogout} title="Logout" style={{
-                        background: "#141824", border: "1px solid #1E2740",
-                        borderRadius: 8, padding: "8px 12px", cursor: "pointer",
-                        color: "#FF7B7B", fontSize: 12, transition: "all 0.15s",
-                        fontFamily: "'Inter', sans-serif", fontWeight: 600,
-                    }}>
-                        Logout
-                    </button>
-
-                    {/* Theme toggle */}
-                    <button onClick={toggle} title="Switch to Light Mode" style={{
-                        background: "#141824", border: "1px solid #1E2740",
-                        borderRadius: 8, padding: "8px 12px", cursor: "pointer",
-                        color: "#8B91A8", fontSize: 14, transition: "all 0.15s",
+                        color: "#8B91A8", fontSize: 13, transition: "all 0.15s",
                         marginLeft: isMobile ? "auto" : 0,
+                        fontFamily: "'Inter', sans-serif", fontWeight: 600,
+                        position: "relative",
                     }}>
-                        {"\u2600\uFE0F"}
+                        Settings
+                        {isAdmin && unreadSupportCount > 0 && (
+                            <span style={{
+                                position: "absolute",
+                                top: -6,
+                                right: -6,
+                                minWidth: 18,
+                                height: 18,
+                                borderRadius: 999,
+                                background: "#EF4444",
+                                color: "#fff",
+                                fontSize: 10,
+                                lineHeight: "18px",
+                                textAlign: "center",
+                                fontWeight: 700,
+                                padding: "0 4px",
+                            }}>
+                                {unreadSupportCount > 99 ? "99+" : unreadSupportCount}
+                            </span>
+                        )}
                     </button>
                 </header>
 
@@ -817,6 +1167,8 @@ export default function App() {
                         theme={theme}
                     />
                 )}
+
+                {settingsPanel}
             </div>
         );
     }
@@ -944,80 +1296,9 @@ export default function App() {
                         </select>
                     )}
 
-                    {isAdmin && (
-                        <button
-                            onClick={handleAdminCreateUser}
-                            style={{
-                                background: "#ECFDF5",
-                                border: "1px solid #A7F3D0",
-                                borderRadius: 8,
-                                padding: "8px 12px",
-                                cursor: "pointer",
-                                fontSize: 13,
-                                color: "#065F46",
-                                fontFamily: "'Inter',sans-serif",
-                                fontWeight: 600,
-                            }}
-                        >
-                            + Create User
-                        </button>
-                    )}
-
                     <button
-                        onClick={handleChangeName}
-                        style={{
-                            background: "#F9FAFB",
-                            border: "1px solid #E5E7EB",
-                            borderRadius: 8,
-                            padding: "8px 12px",
-                            cursor: "pointer",
-                            fontSize: 13,
-                            color: "#374151",
-                            fontFamily: "'Inter',sans-serif",
-                        }}
-                    >
-                        Name
-                    </button>
-
-                    <button
-                        onClick={handleChangePassword}
-                        style={{
-                            background: "#F9FAFB",
-                            border: "1px solid #E5E7EB",
-                            borderRadius: 8,
-                            padding: "8px 12px",
-                            cursor: "pointer",
-                            fontSize: 13,
-                            color: "#374151",
-                            fontFamily: "'Inter',sans-serif",
-                        }}
-                    >
-                        Password
-                    </button>
-
-                    <button
-                        onClick={handleLogout}
-                        title="Logout"
-                        style={{
-                            background: "#FEF2F2",
-                            border: "1px solid #FECACA",
-                            borderRadius: 8,
-                            padding: "8px 12px",
-                            cursor: "pointer",
-                            fontSize: 13,
-                            color: "#B91C1C",
-                            fontFamily: "'Inter',sans-serif",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                        }}
-                    >
-                        Logout
-                    </button>
-
-                    <button
-                        onClick={toggle}
-                        title="Switch to Dark Mode"
+                        onClick={openSettings}
+                        title="Settings"
                         style={{
                             marginLeft: isMobile ? 0 : "auto",
                             background: "#111827",
@@ -1032,11 +1313,31 @@ export default function App() {
                             alignItems: "center",
                             gap: 6,
                             transition: "background 0.15s",
+                            position: "relative",
                         }}
                         onMouseEnter={e => e.currentTarget.style.background = "#1F2937"}
                         onMouseLeave={e => e.currentTarget.style.background = "#111827"}
                     >
-                        {"\uD83C\uDF19"} Dark Mode
+                        Settings
+                        {isAdmin && unreadSupportCount > 0 && (
+                            <span style={{
+                                position: "absolute",
+                                top: -6,
+                                right: -6,
+                                minWidth: 18,
+                                height: 18,
+                                borderRadius: 999,
+                                background: "#EF4444",
+                                color: "#fff",
+                                fontSize: 10,
+                                lineHeight: "18px",
+                                textAlign: "center",
+                                fontWeight: 700,
+                                padding: "0 4px",
+                            }}>
+                                {unreadSupportCount > 99 ? "99+" : unreadSupportCount}
+                            </span>
+                        )}
                     </button>
                 </div>
 
@@ -1120,6 +1421,8 @@ export default function App() {
                     theme={theme}
                 />
             )}
+
+            {settingsPanel}
         </div>
     );
 }
