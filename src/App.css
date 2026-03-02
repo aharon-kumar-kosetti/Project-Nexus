@@ -12,6 +12,22 @@
   padding: 0;
 }
 
+@font-face {
+  font-family: "SF Pro";
+  src: url("/fonts/SF-Pro-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SF Pro";
+  src: url("/fonts/SF-Pro-Semibold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ─── DARK THEME TOKENS (new clean design from image) ─── */
 [data-nexus-theme="dark"] {
   --bg: #0B0D18;
@@ -34,9 +50,9 @@
   --shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
   --shadow-hover: 0 8px 32px rgba(0, 0, 0, 0.65);
   --card-radius: 10px;
-  --font-head: 'Space Grotesk', sans-serif;
-  --font-body: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-head: "SF Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-body: "SF Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "SF Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
 /* ─── LIGHT THEME TOKENS (existing Iron Man HUD) ─── */
@@ -61,14 +77,20 @@
   --shadow: 0 4px 20px rgba(255, 0, 60, 0.08);
   --shadow-hover: 0 8px 32px rgba(255, 0, 60, 0.15);
   --card-radius: 12px;
-  --font-head: 'Orbitron', monospace;
-  --font-body: 'Rajdhani', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-head: "SF Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-body: "SF Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "SF Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
 body {
   margin: 0;
   overflow-x: hidden;
+  font-family: var(--font-body);
+  font-weight: 400;
+}
+
+* {
+  font-family: var(--font-body) !important;
 }
 
 /* ─── JARVIS LOGIN SCREEN ─── */
